@@ -30,8 +30,13 @@ urlpatterns = [
     # Nests property and service type endpoints under /api/properties/ for modularity
     path('api/properties/', include('properties.urls')),
 
-    # Placeholder for other app URLs
-    # path('api/properties/', include('properties.urls')),
-    # path('api/cleaning_jobs/', include('cleaning_jobs.urls')),
+    # Nests job-related endpoints under /api/jobs/ for modularity, alongside /api/auth/ and /api/properties/
+    # Supports CleaningJob CRUD operations with JWT authentication and role-based permissions
+    # Endpoints: list/create jobs, job details management, cleaner status updates
+    path('api/jobs/', include('cleaning_jobs.urls')),
+
+    # Placeholder for future app URLs (payments, reviews, notifications)
+    # path('api/payments/', include('payments.urls')),
+    # path('api/reviews/', include('reviews.urls')),
 ]
 
