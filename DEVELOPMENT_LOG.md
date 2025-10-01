@@ -95,6 +95,15 @@ source ./.venv/bin/activate
     - Added proper authentication requirements and permission checks for all operations.
     - Integrated geospatial data support for location-based property management.
 
+### 2.8: Property and Service Type URL Configuration
+- **Description:** Configured URL routing for Property and ServiceType API endpoints with JWT authentication.
+- **Details:**
+    - Created `backend/properties/urls.py` with endpoints for property and service type operations.
+    - Defined URL patterns: `/properties/` (list/create), `/properties/<pk>/` (detail operations), `/service-types/` (list/create).
+    - Updated root `backend/e_clean_backend/urls.py` to include properties URLs under `/api/properties/` namespace.
+    - Added comprehensive comments explaining endpoint purposes and permission requirements.
+    - Prepared URL structure for future admin-only service type management.
+
 ---
 
 ## Phase 3: Bug Fixing and Refinements

@@ -27,6 +27,9 @@ urlpatterns = [
     # Endpoint for refreshing JWT access tokens
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
+    # Nests property and service type endpoints under /api/properties/ for modularity
+    path('api/properties/', include('properties.urls')),
+
     # Placeholder for other app URLs
     # path('api/properties/', include('properties.urls')),
     # path('api/cleaning_jobs/', include('cleaning_jobs.urls')),
