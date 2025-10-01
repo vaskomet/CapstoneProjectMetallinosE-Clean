@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import MinLengthValidator
 from .models import User
@@ -40,7 +41,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     # Override email to make it required and unique for registration.
     email = serializers.EmailField(
         required=True,
-        validators=[serializers.UniqueValidator(
+        validators=[UniqueValidator(
             queryset=User.objects.all(),
             message="A user with this email already exists."
         )]
