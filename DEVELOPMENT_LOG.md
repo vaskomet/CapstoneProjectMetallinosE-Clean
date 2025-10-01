@@ -104,6 +104,21 @@ source ./.venv/bin/activate
     - Added comprehensive comments explaining endpoint purposes and permission requirements.
     - Prepared URL structure for future admin-only service type management.
 
+### 2.9: CleaningJob Model Implementation
+- **Description:** Implemented the CleaningJob model to handle the complete booking lifecycle and eco-impact tracking.
+- **Details:**
+    - Created comprehensive `CleaningJob` model in `backend/cleaning_jobs/models.py`.
+    - Implemented status tracking with choices: `pending`, `confirmed`, `in_progress`, `completed`, `cancelled`.
+    - Added foreign key relationships to `User` (client and cleaner) and `Property` models.
+    - Configured scheduling fields: `scheduled_date`, `start_time`, `end_time` for appointment management.
+    - Added `services_requested` ManyToManyField linking to `ServiceType` for flexible service selection.
+    - Implemented `checklist` JSONField for task tracking during cleaning sessions.
+    - Added pricing fields: `base_price`, `additional_charges`, `total_price` for transparent billing.
+    - Integrated `eco_impact_metrics` JSONField to track environmental benefits of eco-friendly cleaning.
+    - Added timestamp fields: `created_at`, `updated_at`, `completed_at` for comprehensive lifecycle tracking.
+    - Configured database indexes on `status`, `scheduled_date`, and foreign key fields for optimal query performance.
+    - Added model metadata for proper ordering and string representation.
+
 ---
 
 ## Phase 3: Bug Fixing and Refinements
