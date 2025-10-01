@@ -85,6 +85,16 @@ source ./.venv/bin/activate
     - Implemented `ServiceTypeSerializer` for service standardization API endpoints.
     - Configured read-only fields and depth settings for proper API data representation.
 
+### 2.7: Property and Service Type API Views
+- **Description:** Implemented DRF API views for Property and ServiceType CRUD operations with role-based permissions.
+- **Details:**
+    - Created `backend/properties/views.py`.
+    - Implemented `PropertyListCreateView` for listing all properties and creating new ones with ownership assignment.
+    - Implemented `PropertyRetrieveUpdateDestroyView` with ownership-based permissions for property management.
+    - Implemented `ServiceTypeListCreateView` for service type listing and admin creation.
+    - Added proper authentication requirements and permission checks for all operations.
+    - Integrated geospatial data support for location-based property management.
+
 ---
 
 ## Phase 3: Bug Fixing and Refinements
