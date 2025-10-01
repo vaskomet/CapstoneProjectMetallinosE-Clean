@@ -29,6 +29,13 @@ urlpatterns = [
     # pk parameter enables status updates for specific jobs
     # Requires: JWT authentication, cleaner assignment validation
     path('<int:pk>/status/', views.CleaningJobStatusUpdateView.as_view(), name='job-status-update'),
+    
+    # Job claim endpoint for cleaners to claim available jobs
+    # PATCH: Allows cleaners to claim pending jobs with no assigned cleaner
+    # Sets cleaner to authenticated user and status to 'confirmed'
+    # pk parameter enables claiming specific jobs
+    # Requires: JWT authentication, cleaner role validation
+    path('<int:pk>/claim/', views.CleaningJobClaimView.as_view(), name='job-claim'),
 ]
 
 # Testing endpoints with Postman examples:

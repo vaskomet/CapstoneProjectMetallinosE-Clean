@@ -1,4 +1,5 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 
 urlpatterns = [
@@ -9,6 +10,9 @@ urlpatterns = [
     # Endpoint for user login.
     # Accepts POST requests with {'email': '...', 'password': '...'} and returns JWT tokens.
     path('login/', views.LoginView.as_view(), name='login'),
+
+    # Endpoint for JWT token refresh
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     # Endpoint for user profile management.
     # GET: Returns current user profile data

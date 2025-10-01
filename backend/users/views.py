@@ -2,6 +2,7 @@ from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import serializers
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -11,6 +12,8 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Custom token obtain pair serializer to include user data in the response.
     """
+    username_field = 'email'  # Use email field instead of username
+    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -20,9 +23,37 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        data = super().validate(attrs)
-        # Add user data to the response using the UserSerializer
-        data['user'] = UserSerializer(self.user).data
+        # Get email and password from the request
+        email = attrs.get('email')
+        password = attrs.get('password')
+        
+        if not email or not password:
+            raise serializers.ValidationError('Email and password are required.')
+        
+        # Check if user exists first
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError('No account found with this email address.')
+        
+        # User exists, now check password
+        if not user.check_password(password):
+            raise serializers.ValidationError('Incorrect password. Please try again.')
+        
+        # Check if user account is active
+        if not user.is_active:
+            raise serializers.ValidationError('Your account has been disabled. Please contact support.')
+        
+        # All checks passed, generate tokens
+        refresh = self.get_token(user)
+        data = {
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
+        }
         return data
 
 class LoginView(TokenObtainPairView):

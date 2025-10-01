@@ -28,7 +28,9 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         """
         Filter queryset based on user role.
-        Clients can only see their own jobs, admins can view all.
+        - Clients: see their own jobs
+        - Cleaners: see available jobs (pending, no cleaner) + their assigned jobs
+        - Admins: see all jobs
         """
         user = self.request.user
         
@@ -38,12 +40,23 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
                 'client', 'cleaner', 'property'
             ).prefetch_related('services_requested')
         
-        # Regular users (clients) can only see their own jobs
-        return CleaningJob.objects.filter(
-            client=user
-        ).select_related(
-            'client', 'cleaner', 'property'
-        ).prefetch_related('services_requested')
+        # Cleaners can see available jobs (pending, no cleaner assigned) + their assigned jobs
+        elif hasattr(user, 'role') and user.role == 'cleaner':
+            from django.db.models import Q
+            return CleaningJob.objects.filter(
+                Q(cleaner=user) |  # Their assigned jobs
+                Q(cleaner__isnull=True, status='pending')  # Available jobs
+            ).select_related(
+                'client', 'cleaner', 'property'
+            ).prefetch_related('services_requested')
+        
+        # Clients can only see their own jobs
+        else:
+            return CleaningJob.objects.filter(
+                client=user
+            ).select_related(
+                'client', 'cleaner', 'property'
+            ).prefetch_related('services_requested')
     
     def get_serializer_class(self):
         """
@@ -265,6 +278,53 @@ class CleaningJobStatusUpdateView(generics.UpdateAPIView):
             raise ValidationError(
                 f"Cleaners cannot transition from {current_status} to {new_status}"
             )
+
+
+class CleaningJobClaimView(generics.UpdateAPIView):
+    """
+    Allow cleaners to claim available jobs.
+    
+    PATCH /api/jobs/{id}/claim/
+    - Only cleaners can claim jobs
+    - Job must be in 'pending' status with no assigned cleaner
+    - Sets cleaner to authenticated user and status to 'confirmed'
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = CleaningJobSerializer
+    
+    def get_queryset(self):
+        return CleaningJob.objects.filter(
+            status='pending',
+            cleaner__isnull=True
+        )
+    
+    def update(self, request, *args, **kwargs):
+        # Ensure only cleaners can claim jobs
+        if not hasattr(request.user, 'role') or request.user.role != 'cleaner':
+            raise PermissionDenied("Only cleaners can claim jobs.")
+        
+        job = self.get_object()
+        
+        # Double-check job is still available
+        if job.cleaner is not None:
+            return Response(
+                {'error': 'Job has already been claimed by another cleaner'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if job.status != 'pending':
+            return Response(
+                {'error': 'Job is not available for claiming'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Claim the job
+        job.cleaner = request.user
+        job.status = 'confirmed'
+        job.save()
+        
+        serializer = self.get_serializer(job)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 # Testing with Postman examples:

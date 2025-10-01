@@ -5,7 +5,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import { useUser } from '../contexts/UserContext';
-import { cleaningJobsAPI } from '../services/api';
+import { cleaningJobsAPI, propertiesAPI } from '../services/api';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -28,6 +28,8 @@ const CleaningJobsPool = () => {
   const { user, isAuthenticated } = useUser();
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
+  const [properties, setProperties] = useState([]);
+  const [serviceTypes, setServiceTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -39,7 +41,9 @@ const CleaningJobsPool = () => {
     start_time: '',
     end_time: '',
     services_requested: [],
-    special_instructions: '',
+    checklist: [],
+    notes: '',
+    discount_applied: 0,
     estimated_duration: 60
   });
 
@@ -69,12 +73,40 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Load jobs on component mount
+  // Fetch user properties (for clients only)
+  const fetchProperties = async () => {
+    if (user?.role !== 'client') return;
+    
+    try {
+      const response = await propertiesAPI.getAll();
+      const propertiesData = response.data.results || response.data || [];
+      setProperties(propertiesData);
+    } catch (err) {
+      console.error('Fetch properties error:', err);
+      toast.error('Failed to load properties');
+    }
+  };
+
+  // Fetch available service types
+  const fetchServiceTypes = async () => {
+    try {
+      const response = await propertiesAPI.getServiceTypes();
+      const serviceTypesData = response.data.results || response.data || [];
+      setServiceTypes(serviceTypesData);
+    } catch (err) {
+      console.error('Fetch service types error:', err);
+      toast.error('Failed to load service types');
+    }
+  };
+
+  // Load jobs and properties on component mount
   useEffect(() => {
     if (isAuthenticated) {
       fetchJobs();
+      fetchProperties();
+      fetchServiceTypes();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.role]);
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -88,21 +120,59 @@ const CleaningJobsPool = () => {
   // Handle services selection
   const handleServicesChange = (e) => {
     const { value, checked } = e.target;
+    const serviceId = parseInt(value); // Convert to integer ID
+    
     setFormData(prev => ({
       ...prev,
       services_requested: checked
-        ? [...prev.services_requested, value]
-        : prev.services_requested.filter(service => service !== value)
+        ? [...prev.services_requested, serviceId]
+        : prev.services_requested.filter(service => service !== serviceId)
+    }));
+  };
+
+  // Handle checklist items
+  const handleChecklistChange = (e) => {
+    const { value, checked } = e.target;
+    
+    setFormData(prev => ({
+      ...prev,
+      checklist: checked
+        ? [...prev.checklist, value]
+        : prev.checklist.filter(item => item !== value)
     }));
   };
 
   // Handle job creation
   const handleCreateJob = async (e) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!formData.property) {
+      toast.error('Please select a property');
+      return;
+    }
+    
+    if (!formData.scheduled_date || !formData.start_time) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    if (!formData.services_requested || formData.services_requested.length === 0) {
+      toast.error('Please select at least one service');
+      return;
+    }
+
     setError('');
 
     try {
-      await cleaningJobsAPI.create(formData);
+      // Convert property ID to number
+      const jobData = {
+        ...formData,
+        property: parseInt(formData.property)
+      };
+      
+      console.log('Sending job data:', jobData);
+      await cleaningJobsAPI.create(jobData);
       toast.success('Job created successfully!');
       setShowCreateModal(false);
       setFormData({
@@ -111,15 +181,18 @@ const CleaningJobsPool = () => {
         start_time: '',
         end_time: '',
         services_requested: [],
-        special_instructions: '',
+        checklist: [],
+        notes: '',
+        discount_applied: 0,
         estimated_duration: 60
       });
       fetchJobs(); // Refresh jobs list
     } catch (err) {
+      console.error('Create job error:', err);
+      console.error('Error response:', err.response?.data);
       const errorMessage = err.response?.data?.detail || 'Failed to create job';
       setError(errorMessage);
       toast.error('Error: ' + errorMessage);
-      console.error('Create job error:', err);
     }
   };
 
@@ -137,6 +210,20 @@ const CleaningJobsPool = () => {
     }
   };
 
+  // Handle claim job (for cleaners)
+  const handleClaimJob = async (jobId) => {
+    try {
+      await cleaningJobsAPI.claimJob(jobId);
+      toast.success('Job claimed successfully!');
+      fetchJobs(); // Refresh jobs list
+      setShowJobModal(false);
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || 'Failed to claim job';
+      toast.error('Error: ' + errorMessage);
+      console.error('Claim job error:', err);
+    }
+  };
+
   // Handle event click in calendar
   const handleEventClick = (clickInfo) => {
     setSelectedJob(clickInfo.event.extendedProps);
@@ -146,7 +233,7 @@ const CleaningJobsPool = () => {
   // Convert jobs to calendar events
   const calendarEvents = jobs.map(job => ({
     id: job.id,
-    title: `${job.status} - ${job.service_type?.name || 'Cleaning'}`,
+    title: `${job.status} - ${job.property?.address_line1 || 'Property'} (${job.service_type?.name || 'Cleaning'})`,
     start: job.scheduled_date,
     end: job.scheduled_date,
     backgroundColor: getStatusColor(job.status),
@@ -191,12 +278,33 @@ const CleaningJobsPool = () => {
             {/* Action Buttons */}
             <div className="flex gap-3">
               {user?.role === 'client' && (
-                <button
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
-                >
-                  Book Cleaning
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      if (properties.length === 0) {
+                        toast.warning('Please add a property first before booking a cleaning service');
+                        return;
+                      }
+                      setShowCreateModal(true);
+                    }}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      properties.length === 0
+                        ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                    }`}
+                    title={properties.length === 0 ? 'Add a property first' : 'Book a cleaning service'}
+                  >
+                    Book Cleaning
+                  </button>
+                  {properties.length === 0 && (
+                    <button
+                      onClick={() => window.location.href = '/properties'}
+                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Add Property
+                    </button>
+                  )}
+                </>
               )}
               
               <button
@@ -267,6 +375,40 @@ const CleaningJobsPool = () => {
               </div>
 
               <form onSubmit={handleCreateJob} className="space-y-4">
+                {/* Property Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Select Property *
+                  </label>
+                  <select
+                    name="property"
+                    value={formData.property}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">Choose a property...</option>
+                    {properties.map(property => (
+                      <option key={property.id} value={property.id}>
+                        {property.address_line1}, {property.city} ({property.property_type})
+                      </option>
+                    ))}
+                  </select>
+                  {properties.length === 0 && (
+                    <p className="mt-1 text-sm text-amber-600">
+                      No properties found. <span 
+                        className="text-blue-600 cursor-pointer hover:underline"
+                        onClick={() => {
+                          setShowCreateModal(false);
+                          window.location.href = '/properties';
+                        }}
+                      >
+                        Add a property first
+                      </span>
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Scheduled Date
@@ -316,16 +458,18 @@ const CleaningJobsPool = () => {
                     Services Requested
                   </label>
                   <div className="space-y-2">
-                    {['Basic Cleaning', 'Deep Cleaning', 'Window Cleaning', 'Carpet Cleaning', 'Kitchen Cleaning', 'Bathroom Cleaning'].map(service => (
-                      <label key={service} className="flex items-center">
+                    {serviceTypes.map(service => (
+                      <label key={service.id} className="flex items-center">
                         <input
                           type="checkbox"
-                          value={service}
-                          checked={formData.services_requested.includes(service)}
+                          value={service.id}
+                          checked={formData.services_requested.includes(service.id)}
                           onChange={handleServicesChange}
                           className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
-                        <span className="ml-2 text-sm text-gray-700">{service}</span>
+                        <span className="ml-2 text-sm text-gray-700">
+                          {service.name} - ${service.base_price}
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -351,12 +495,48 @@ const CleaningJobsPool = () => {
                     Special Instructions
                   </label>
                   <textarea
-                    name="special_instructions"
-                    value={formData.special_instructions}
+                    name="notes"
+                    value={formData.notes}
                     onChange={handleInputChange}
                     rows="3"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Any special requirements or instructions..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cleaning Checklist
+                  </label>
+                  <div className="space-y-2">
+                    {['kitchen', 'bathroom', 'living room', 'bedrooms', 'windows', 'floors', 'appliances', 'dusting'].map(item => (
+                      <label key={item} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          value={item}
+                          checked={formData.checklist.includes(item)}
+                          onChange={handleChecklistChange}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm text-gray-700 capitalize">{item}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Discount Applied ($)
+                  </label>
+                  <input
+                    type="number"
+                    name="discount_applied"
+                    value={formData.discount_applied}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="0.00"
                   />
                 </div>
 
@@ -400,6 +580,14 @@ const CleaningJobsPool = () => {
 
               <div className="space-y-3">
                 <div>
+                  <span className="font-medium text-gray-700">Property:</span>
+                  <span className="ml-2">
+                    {selectedJob.property?.address_line1 || 'Unknown Address'}
+                    {selectedJob.property?.city && `, ${selectedJob.property.city}`}
+                  </span>
+                </div>
+                
+                <div>
                   <span className="font-medium text-gray-700">Status:</span>
                   <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
                     selectedJob.status === 'completed' ? 'bg-green-100 text-green-800' :
@@ -429,8 +617,20 @@ const CleaningJobsPool = () => {
                 )}
               </div>
 
+              {/* Claim Job Button for Cleaners (available jobs) */}
+              {user?.role === 'cleaner' && selectedJob.status === 'pending' && !selectedJob.assigned_cleaner && (
+                <div className="mt-6">
+                  <button
+                    onClick={() => handleClaimJob(selectedJob.id)}
+                    className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded font-medium transition-colors"
+                  >
+                    Claim This Job
+                  </button>
+                </div>
+              )}
+
               {/* Status Update Buttons for Cleaners */}
-              {user?.role === 'cleaner' && selectedJob.status !== 'completed' && selectedJob.status !== 'cancelled' && (
+              {user?.role === 'cleaner' && selectedJob.status !== 'completed' && selectedJob.status !== 'cancelled' && selectedJob.assigned_cleaner === user.id && (
                 <div className="mt-6 space-y-2">
                   <h3 className="font-medium text-gray-700">Update Status:</h3>
                   <div className="flex gap-2">

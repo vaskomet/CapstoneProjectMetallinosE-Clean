@@ -31,8 +31,8 @@ class Property(models.Model):
     country = models.CharField(max_length=100, default='US')
     
     # Temporary coordinate fields (will be replaced with PointField when PostGIS is configured)
-    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)  # -90.12345678 needs 11 total digits
+    longitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)  # -180.12345678 needs 12 total digits
     # location = gis_models.PointField(null=True, blank=True)  # Will be re-enabled with PostGIS
     
     property_type = models.CharField(

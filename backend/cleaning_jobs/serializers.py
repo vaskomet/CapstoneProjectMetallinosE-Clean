@@ -108,7 +108,8 @@ class CleaningJobCreateSerializer(serializers.ModelSerializer):
             'end_time',
             'services_requested',
             'checklist',
-            'notes'
+            'notes',
+            'discount_applied'
         ]
         # Excludes read-only fields (status, total_cost, eco_impact_metrics) set by views
 

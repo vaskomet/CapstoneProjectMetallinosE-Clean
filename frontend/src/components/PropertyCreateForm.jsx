@@ -1,8 +1,50 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import { useUser } from '../contexts/UserContext';
 import { propertiesAPI } from '../services/api';
 import { toast } from 'react-toastify';
+
+// Fix for default icons in Leaflet with Webpack
+import L from 'leaflet';
+
+let DefaultIcon = L.divIcon({
+  html: '<div style="background-color: #ef4444; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+  iconSize: [25, 25],
+  iconAnchor: [12, 12],
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Create custom red icon for property markers
+const createCustomIcon = () => {
+  return L.divIcon({
+    html: '<div style="background-color: #ef4444; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+    iconSize: [25, 25],
+    iconAnchor: [12, 12],
+    className: 'custom-marker'
+  });
+};
+
+/**
+ * Map Click Handler Component
+ * Handles click events on the map to set property location
+ */
+const MapClickHandler = ({ onLocationSelect }) => {
+  useMapEvents({
+    click: (e) => {
+      try {
+        const { lat, lng } = e.latlng;
+        if (onLocationSelect && typeof onLocationSelect === 'function') {
+          onLocationSelect(lat, lng);
+        }
+      } catch (error) {
+        console.error('Error handling map click:', error);
+        toast.error('Error selecting location on map');
+      }
+    },
+  });
+  return null;
+};
 
 /**
  * PropertyCreateForm Component
@@ -35,6 +77,11 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
     latitude: '',
     longitude: ''
   });
+  const [mapLocation, setMapLocation] = useState({
+    lat: 37.9755, // Athens, Greece latitude
+    lng: 23.7348, // Athens, Greece longitude
+    hasLocation: false
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -66,6 +113,26 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         [name]: ''
       }));
     }
+  };
+
+  // Handle map location selection
+  const handleLocationSelect = (lat, lng) => {
+    setMapLocation({
+      lat: lat,
+      lng: lng,
+      hasLocation: true
+    });
+    toast.success(`Location set: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+  };
+
+  // Clear map location
+  const clearLocation = () => {
+    setMapLocation({
+      lat: 37.9755, // Reset to Athens
+      lng: 23.7348,
+      hasLocation: false
+    });
+    toast.info('Location cleared');
   };
 
   // Validate form data
@@ -133,13 +200,27 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
       };
 
       // Add location if coordinates are provided
-      if (formData.latitude && formData.longitude) {
-        propertyData.location = {
-          type: 'Point',
-          coordinates: [parseFloat(formData.longitude), parseFloat(formData.latitude)]
-        };
+      if (mapLocation.hasLocation) {
+        const lat = parseFloat(mapLocation.lat.toFixed(8));
+        const lng = parseFloat(mapLocation.lng.toFixed(8));
+        
+        // Validate coordinate ranges
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          propertyData.latitude = lat;
+          propertyData.longitude = lng;
+        }
+      } else if (formData.latitude && formData.longitude) {
+        const lat = parseFloat(parseFloat(formData.latitude).toFixed(8));
+        const lng = parseFloat(parseFloat(formData.longitude).toFixed(8));
+        
+        // Validate coordinate ranges
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          propertyData.latitude = lat;
+          propertyData.longitude = lng;
+        }
       }
 
+      console.log('Sending property data:', propertyData);
       await propertiesAPI.create(propertyData);
       toast.success('Property created successfully!');
       
@@ -165,6 +246,8 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         navigate('/properties');
       }
     } catch (err) {
+      console.error('Error creating property:', err);
+      console.error('Error response:', err.response?.data);
       const errorMessage = err.response?.data?.detail || 
                           err.response?.data?.message || 
                           'Failed to create property';
@@ -311,10 +394,7 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
               >
                 <option value="house">House</option>
                 <option value="apartment">Apartment</option>
-                <option value="condo">Condo</option>
                 <option value="office">Office</option>
-                <option value="commercial">Commercial</option>
-                <option value="other">Other</option>
               </select>
             </div>
 
@@ -356,56 +436,117 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
 
         {/* Location Section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-medium text-gray-900">Location Coordinates (Optional)</h3>
+          <h3 className="text-lg font-medium text-gray-900">Property Location</h3>
           <p className="text-sm text-gray-600">
-            Add precise coordinates for map display. Leave empty to use address geocoding.
+            Click on the map to select the exact location of your property.
           </p>
           
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Latitude (-90 to 90)
-              </label>
-              <input
-                type="number"
-                name="latitude"
-                value={formData.latitude}
-                onChange={handleInputChange}
-                step="any"
-                min="-90"
-                max="90"
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.latitude ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="37.7749"
+          {/* Map Container */}
+          <div className="border border-gray-300 rounded-lg overflow-hidden" style={{ height: '400px' }}>
+            <MapContainer
+              center={[mapLocation.lat, mapLocation.lng]}
+              zoom={13}
+              style={{ height: '100%', width: '100%' }}
+              scrollWheelZoom={false}
+              whenCreated={(mapInstance) => {
+                // Fix for map not showing initially
+                setTimeout(() => {
+                  mapInstance.invalidateSize();
+                }, 100);
+              }}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               />
-              {errors.latitude && (
-                <p className="mt-1 text-sm text-red-600">{errors.latitude}</p>
+              
+              {mapLocation.hasLocation && (
+                <Marker
+                  position={[mapLocation.lat, mapLocation.lng]}
+                  icon={createCustomIcon()}
+                />
               )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Longitude (-180 to 180)
-              </label>
-              <input
-                type="number"
-                name="longitude"
-                value={formData.longitude}
-                onChange={handleInputChange}
-                step="any"
-                min="-180"
-                max="180"
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.longitude ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="-122.4194"
-              />
-              {errors.longitude && (
-                <p className="mt-1 text-sm text-red-600">{errors.longitude}</p>
-              )}
-            </div>
+              
+              <MapClickHandler onLocationSelect={handleLocationSelect} />
+            </MapContainer>
           </div>
+          
+          {/* Location Display and Controls */}
+          <div className="flex items-center justify-between bg-gray-50 p-3 rounded-md">
+            <div className="text-sm">
+              {mapLocation.hasLocation ? (
+                <span className="text-green-600">
+                  📍 Location selected: {mapLocation.lat.toFixed(6)}, {mapLocation.lng.toFixed(6)}
+                </span>
+              ) : (
+                <span className="text-gray-500">
+                  🗺️ Click on the map to select property location
+                </span>
+              )}
+            </div>
+            
+            {mapLocation.hasLocation && (
+              <button
+                type="button"
+                onClick={clearLocation}
+                className="text-sm text-red-600 hover:text-red-800 underline"
+              >
+                Clear Location
+              </button>
+            )}
+          </div>
+          
+          {/* Manual Coordinates Input (Fallback) */}
+          <details className="mt-4">
+            <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
+              Or enter coordinates manually
+            </summary>
+            <div className="mt-2 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Latitude (-90 to 90)
+                </label>
+                <input
+                  type="number"
+                  name="latitude"
+                  value={formData.latitude}
+                  onChange={handleInputChange}
+                  step="any"
+                  min="-90"
+                  max="90"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.latitude ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="37.7749"
+                />
+                {errors.latitude && (
+                  <p className="mt-1 text-sm text-red-600">{errors.latitude}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Longitude (-180 to 180)
+                </label>
+                <input
+                  type="number"
+                  name="longitude"
+                  value={formData.longitude}
+                  onChange={handleInputChange}
+                  step="any"
+                  min="-180"
+                  max="180"
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    errors.longitude ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="-122.4194"
+                />
+                {errors.longitude && (
+                  <p className="mt-1 text-sm text-red-600">{errors.longitude}</p>
+                )}
+              </div>
+            </div>
+          </details>
         </div>
 
         {/* Form Actions */}

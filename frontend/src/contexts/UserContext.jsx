@@ -71,16 +71,32 @@ export function UserProvider({ children }) {
   const login = async (credentials) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
+      
+      // Debug logging (can be removed later)
+      console.log('Login attempt with credentials:', credentials);
+      
       const response = await authAPI.login(credentials);
-      const { access, refresh, user } = response.data;
+      // authAPI.login already handles localStorage, just get user data
+      const { user } = response;
 
-      localStorage.setItem('access_token', access);
-      localStorage.setItem('refresh_token', refresh);
+      console.log('Login successful:', { user: user.email, role: user.role });
       
       dispatch({ type: 'SET_USER', payload: user });
       return { success: true };
     } catch (error) {
-      const errorMessage = error.response?.data?.detail || 'Login failed';
+      console.error('Login error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      // Enhanced error handling for specific cases
+      let errorMessage = 'Login failed';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.data?.email?.[0]) {
+        errorMessage = error.response.data.email[0];
+      } else if (error.response?.data?.password?.[0]) {
+        errorMessage = error.response.data.password[0];
+      }
+      
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
       return { success: false, error: errorMessage };
     }
@@ -113,10 +129,22 @@ export function UserProvider({ children }) {
   const updateProfile = async (data) => {
     try {
       const response = await authAPI.updateProfile(data);
-      dispatch({ type: 'SET_USER', payload: response.data });
+      // API service now returns response.data directly
+      dispatch({ type: 'SET_USER', payload: response });
       return { success: true };
     } catch (error) {
       const errorMessage = error.response?.data?.detail || 'Profile update failed';
+      dispatch({ type: 'SET_ERROR', payload: errorMessage });
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const changePassword = async (passwordData) => {
+    try {
+      await authAPI.changePassword(passwordData);
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error.response?.data?.detail || 'Password change failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
       return { success: false, error: errorMessage };
     }
@@ -128,6 +156,7 @@ export function UserProvider({ children }) {
     register,
     logout,
     updateProfile,
+    changePassword,
   };
 
   return (

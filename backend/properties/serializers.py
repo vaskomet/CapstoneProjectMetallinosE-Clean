@@ -1,13 +1,23 @@
 from rest_framework import serializers
 from .models import Property, ServiceType
 
+class OwnerSerializer(serializers.ModelSerializer):
+    """
+    Simple serializer for user details in property ownership
+    """
+    class Meta:
+        from users.models import User
+        model = User
+        fields = ['id', 'email', 'first_name', 'last_name', 'role']
+        read_only_fields = ['id', 'email', 'first_name', 'last_name', 'role']
+
 class PropertySerializer(serializers.ModelSerializer):
     """
     Serializer for the Property model.
     Handles CRUD operations for client properties with geospatial support.
     """
-    # Owner is read-only and displays basic user details
-    owner = serializers.StringRelatedField(read_only=True)
+    # Owner with detailed user information for frontend ownership checks
+    owner = OwnerSerializer(read_only=True)
     
     # Preferences field is read-only to prevent direct API updates, managed by views
     preferences = serializers.JSONField(read_only=True)
@@ -23,7 +33,8 @@ class PropertySerializer(serializers.ModelSerializer):
             'state', 
             'postal_code', 
             'country', 
-            'location',  # Location field serialized as GeoJSON for Leaflet.js integration, per CompatibilitySpecifics.rtf
+            'latitude',  # Using latitude/longitude fields while PostGIS is disabled
+            'longitude',
             'property_type', 
             'size_sqft', 
             'preferences', 
@@ -34,18 +45,22 @@ class PropertySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
         depth = 1  # Include basic user details for owner
 
-    def validate_location(self, value):
+    def validate_latitude(self, value):
         """
-        Location validation to ensure valid coordinates.
-        Validates that coordinates are within valid ranges.
+        Latitude validation to ensure valid coordinates.
         """
-        if value:
-            # Validate longitude is between -180 and 180
-            if value.x < -180 or value.x > 180:
-                raise serializers.ValidationError("Longitude must be between -180 and 180")
-            # Validate latitude is between -90 and 90
-            if value.y < -90 or value.y > 90:
+        if value is not None:
+            if value < -90 or value > 90:
                 raise serializers.ValidationError("Latitude must be between -90 and 90")
+        return value
+
+    def validate_longitude(self, value):
+        """
+        Longitude validation to ensure valid coordinates.
+        """
+        if value is not None:
+            if value < -180 or value > 180:
+                raise serializers.ValidationError("Longitude must be between -180 and 180")
         return value
 
 class ServiceTypeSerializer(serializers.ModelSerializer):

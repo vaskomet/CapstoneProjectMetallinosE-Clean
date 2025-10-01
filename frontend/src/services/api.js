@@ -1,7 +1,6 @@
 import axios from 'axios';
 
 // API service configuration per DEVELOPMENT_STANDARDS.md
-// Test with console.log(response.data) to verify token and user data
 // Align with API conventions from DEVELOPMENT_STANDARDS.md
 const API_BASE_URL = 'http://localhost:8000/api';
 
@@ -29,29 +28,34 @@ api.interceptors.request.use(
 
 // Response interceptor to handle token refresh
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   async (error) => {
-    const original = error.config;
+    const originalRequest = error.config;
 
-    if (error.response?.status === 401 && !original._retry) {
-      original._retry = true;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
 
       try {
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken) {
-          const response = await axios.post(`${API_BASE_URL}/token/refresh/`, {
+          const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
             refresh: refreshToken,
           });
 
           const { access } = response.data;
           localStorage.setItem('access_token', access);
 
-          return api(original);
+          // Retry the original request with new token
+          originalRequest.headers.Authorization = `Bearer ${access}`;
+          return api(originalRequest);
         }
       } catch (refreshError) {
         // Refresh failed, redirect to login
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -61,14 +65,38 @@ api.interceptors.response.use(
   }
 );
 
-// Auth API
+// Authentication API
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login/', credentials),
-  register: (userData) => api.post('/auth/register/', userData),
-  refreshToken: (refreshToken) => api.post('/token/refresh/', { refresh: refreshToken }),
-  getProfile: () => api.get('/auth/profile/'),
-  updateProfile: (data) => api.patch('/auth/profile/', data),
-  changePassword: (passwordData) => api.post('/auth/change-password/', passwordData),
+  login: async (credentials) => {
+    const response = await api.post('/auth/login/', credentials);
+    // Follow DEVELOPMENT_STANDARDS.md pattern - handle localStorage here and return response.data
+    const { access, refresh, user } = response.data;
+    localStorage.setItem('access_token', access);
+    localStorage.setItem('refresh_token', refresh);
+    localStorage.setItem('user', JSON.stringify(user));
+    return response.data;
+  },
+  register: async (userData) => {
+    const response = await api.post('/auth/register/', userData);
+    return response.data;
+  },
+  updateProfile: async (data) => {
+    const response = await api.patch('/auth/profile/', data);
+    return response.data;
+  },
+  changePassword: async (passwordData) => {
+    const response = await api.post('/auth/change-password/', passwordData);
+    return response.data;
+  },
+  logout: () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user');
+  },
+  getCurrentUser: () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  },
 };
 
 // Properties API
@@ -89,6 +117,7 @@ export const cleaningJobsAPI = {
   update: (id, data) => api.patch(`/jobs/${id}/`, data),
   delete: (id) => api.delete(`/jobs/${id}/`),
   updateStatus: (id, status) => api.patch(`/jobs/${id}/`, { status }),
+  claimJob: (id) => api.patch(`/jobs/${id}/claim/`),
 };
 
 export default api;

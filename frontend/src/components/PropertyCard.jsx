@@ -50,6 +50,13 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
 
   // Check if current user owns this property
   const isOwner = user && property.owner && user.email === property.owner.email;
+  
+  // Debug logging
+  console.log('PropertyCard Debug:', {
+    user: user?.email,
+    propertyOwner: property.owner,
+    isOwner: isOwner
+  });
 
   // Handle property deletion
   const handleDelete = async () => {
@@ -109,10 +116,14 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
 
   // Get map center coordinates
   const getMapCenter = () => {
+    if (property.latitude && property.longitude) {
+      return [parseFloat(property.latitude), parseFloat(property.longitude)]; // [lat, lng]
+    }
+    // Fallback: check for old GeoJSON format (for backward compatibility)
     if (property.location && property.location.coordinates) {
       return [property.location.coordinates[1], property.location.coordinates[0]]; // [lat, lng]
     }
-    return [37.7749, -122.4194]; // Default to San Francisco
+    return [37.9755, 23.7348]; // Default to Athens, Greece
   };
 
   return (
