@@ -76,6 +76,15 @@ source ./.venv/bin/activate
     - Configured `django.contrib.gis` in `settings.py` for geospatial functionality.
     - Added database indexes including GIST index on location field for optimal spatial queries.
 
+### 2.6: Property and Service Type Serializers
+- **Description:** Created DRF serializers for Property and ServiceType models with geospatial API support.
+- **Details:**
+    - Created `backend/properties/serializers.py`.
+    - Implemented `PropertySerializer` with GeoJSON support for location field, compatible with Leaflet.js mapping.
+    - Added location coordinate validation to ensure valid latitude/longitude ranges.
+    - Implemented `ServiceTypeSerializer` for service standardization API endpoints.
+    - Configured read-only fields and depth settings for proper API data representation.
+
 ---
 
 ## Phase 3: Bug Fixing and Refinements
