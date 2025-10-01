@@ -59,10 +59,10 @@ class CleaningJobSerializer(serializers.ModelSerializer):
         if obj.property:
             return {
                 'id': obj.property.id,
-                'address': obj.property.address,
+                'address': obj.property.address_line1,
                 'city': obj.property.city,
                 'state': obj.property.state,
-                'zip_code': obj.property.zip_code,
+                'zip_code': obj.property.postal_code,
                 'property_type': obj.property.property_type,
                 'size_sqft': obj.property.size_sqft
             }

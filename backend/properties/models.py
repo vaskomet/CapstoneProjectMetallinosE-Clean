@@ -1,11 +1,12 @@
 from django.db import models
-from django.contrib.gis.db import models as gis_models
+# from django.contrib.gis.db import models as gis_models  # Temporarily disabled for development
 from users.models import User
 
 class Property(models.Model):
     """
     Property model for client-owned locations with geospatial support.
     Enables location-based search using GeoDjango and PostGIS.
+    Note: Geographic fields temporarily disabled for development - will be re-enabled with PostGIS setup.
     """
     PROPERTY_TYPE_CHOICES = [
         ('house', 'House'),
@@ -29,8 +30,10 @@ class Property(models.Model):
     postal_code = models.CharField(max_length=20)
     country = models.CharField(max_length=100, default='US')
     
-    # Location field enables geospatial search with GeoDjango
-    location = gis_models.PointField(null=True, blank=True)
+    # Temporary coordinate fields (will be replaced with PointField when PostGIS is configured)
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    # location = gis_models.PointField(null=True, blank=True)  # Will be re-enabled with PostGIS
     
     property_type = models.CharField(
         max_length=20, 
@@ -55,8 +58,9 @@ class Property(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['owner']),
-            # GIST index on location optimizes Leaflet.js-based search, per CompatibilitySpecifics.rtf
-            models.Index(fields=['location'], name='properties_location_gist'),
+            models.Index(fields=['city', 'state']),  # Geographic search optimization
+            # GIST index on location will be re-enabled with PostGIS setup
+            # models.Index(fields=['location'], name='properties_location_gist'),
         ]
 
     def __str__(self):
@@ -70,6 +74,7 @@ class ServiceType(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)  # e.g., 'Standard Cleaning'
     description = models.TextField(blank=True)
+    base_price = models.DecimalField(max_digits=8, decimal_places=2, default=50.00)  # Base pricing for calculations
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.gis',  # GeoDjango for geospatial support
+    # 'django.contrib.gis',  # Temporarily disabled - will be re-enabled with PostGIS setup
     'rest_framework',
     'corsheaders',
     'users',
