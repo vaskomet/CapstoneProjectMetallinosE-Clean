@@ -7,7 +7,7 @@ from .models import User
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model.
-    Used for displaying user data in a read-only format.
+    Used for displaying and updating user profile data.
     """
     # Email is read-only to prevent updates via API, managed by auth views.
     email = serializers.EmailField(read_only=True)
@@ -26,10 +26,8 @@ class UserSerializer(serializers.ModelSerializer):
             'is_active'
         ]
         read_only_fields = [
-            'first_name', 
-            'last_name', 
-            'phone_number', 
-            'profile_picture', 
+            'email',
+            'role', 
             'is_active'
         ]
 
@@ -83,4 +81,40 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             last_name=validated_data.get('last_name', ''),
             role=validated_data.get('role', 'client')
         )
+        return user
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """
+    Serializer for changing user passwords.
+    Requires current password for validation and new password confirmation.
+    """
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
+    confirm_password = serializers.CharField(required=True)
+
+    def validate_current_password(self, value):
+        """
+        Validate that the current password is correct.
+        """
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def validate(self, attrs):
+        """
+        Validate that new passwords match.
+        """
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError("New passwords do not match.")
+        return attrs
+
+    def save(self):
+        """
+        Update user password.
+        """
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
         return user
