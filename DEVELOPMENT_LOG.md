@@ -67,6 +67,15 @@ source ./.venv/bin/activate
     - Updated the root `backend/e_clean_backend/urls.py` to include the `users.urls` under the `api/auth/` namespace.
     - Added the `api/token/refresh/` endpoint for JWT token refreshing.
 
+### 2.5: Property and Service Type Models
+- **Description:** Implemented models for property management and service standardization with geospatial support.
+- **Details:**
+    - Created `Property` model in `backend/properties/models.py` with geospatial support using GeoDjango.
+    - Added fields for address, location (PointField), property type, size, preferences, and notes.
+    - Implemented `ServiceType` model for standardizing cleaning services.
+    - Configured `django.contrib.gis` in `settings.py` for geospatial functionality.
+    - Added database indexes including GIST index on location field for optimal spatial queries.
+
 ---
 
 ## Phase 3: Bug Fixing and Refinements
