@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 
 export default function Dashboard() {
@@ -27,6 +28,7 @@ export default function Dashboard() {
       {
         title: 'Profile',
         description: 'Update your account information and preferences.',
+        link: '/profile',
         icon: (
           <svg className="h-8 w-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -40,6 +42,7 @@ export default function Dashboard() {
         {
           title: 'Properties',
           description: 'Manage your properties that need cleaning services.',
+          link: '/properties',
           icon: (
             <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -134,28 +137,56 @@ export default function Dashboard() {
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {getFeatures(user?.role).map((feature, index) => (
-              <div key={index} className="group bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
-                <div className="p-8 space-y-6">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0 p-3 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl group-hover:from-blue-200 group-hover:to-purple-200 transition-all duration-300">
-                      {feature.icon}
+              <div key={index} className="group">
+                {feature.link ? (
+                  <Link to={feature.link} className="block bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
+                    <div className="p-8 space-y-6">
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0 p-3 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl group-hover:from-blue-200 group-hover:to-purple-200 transition-all duration-300">
+                          {feature.icon}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-300">
+                          {feature.title}
+                        </h3>
+                      </div>
+                      <p className="text-gray-600 leading-relaxed">
+                        {feature.description}
+                      </p>
+                      <div className="pt-2">
+                        <span className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-semibold text-sm transition-all duration-200 group-hover:translate-x-1">
+                          <span>Get started</span>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </span>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-300">
-                      {feature.title}
-                    </h3>
+                  </Link>
+                ) : (
+                  <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 hover:border-blue-200 transform hover:-translate-y-1">
+                    <div className="p-8 space-y-6">
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0 p-3 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl group-hover:from-blue-200 group-hover:to-purple-200 transition-all duration-300">
+                          {feature.icon}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors duration-300">
+                          {feature.title}
+                        </h3>
+                      </div>
+                      <p className="text-gray-600 leading-relaxed">
+                        {feature.description}
+                      </p>
+                      <div className="pt-2">
+                        <button className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-semibold text-sm transition-all duration-200 group-hover:translate-x-1">
+                          <span>Coming Soon</span>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-gray-600 leading-relaxed">
-                    {feature.description}
-                  </p>
-                  <div className="pt-2">
-                    <button className="inline-flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-semibold text-sm transition-all duration-200 group-hover:translate-x-1">
-                      <span>Get started</span>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
             ))}
           </div>

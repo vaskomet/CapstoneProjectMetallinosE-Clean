@@ -73,22 +73,22 @@ export const authAPI = {
 
 // Properties API
 export const propertiesAPI = {
-  getAll: () => api.get('/properties/'),
-  getById: (id) => api.get(`/properties/${id}/`),
-  create: (data) => api.post('/properties/', data),
-  update: (id, data) => api.patch(`/properties/${id}/`, data),
-  delete: (id) => api.delete(`/properties/${id}/`),
+  getAll: () => api.get('/properties/properties/'),
+  getById: (id) => api.get(`/properties/properties/${id}/`),
+  create: (data) => api.post('/properties/properties/', data),
+  update: (id, data) => api.patch(`/properties/properties/${id}/`, data),
+  delete: (id) => api.delete(`/properties/properties/${id}/`),
   getServiceTypes: () => api.get('/properties/service-types/'),
 };
 
 // Cleaning Jobs API
 export const cleaningJobsAPI = {
-  getAll: () => api.get('/cleaning-jobs/'),
-  getById: (id) => api.get(`/cleaning-jobs/${id}/`),
-  create: (data) => api.post('/cleaning-jobs/', data),
-  update: (id, data) => api.patch(`/cleaning-jobs/${id}/`, data),
-  delete: (id) => api.delete(`/cleaning-jobs/${id}/`),
-  updateStatus: (id, status) => api.patch(`/cleaning-jobs/${id}/`, { status }),
+  getAll: () => api.get('/jobs/'),
+  getById: (id) => api.get(`/jobs/${id}/`),
+  create: (data) => api.post('/jobs/', data),
+  update: (id, data) => api.patch(`/jobs/${id}/`, data),
+  delete: (id) => api.delete(`/jobs/${id}/`),
+  updateStatus: (id, status) => api.patch(`/jobs/${id}/`, { status }),
 };
 
 export default api;

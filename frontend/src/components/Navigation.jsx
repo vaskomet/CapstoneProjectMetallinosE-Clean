@@ -55,6 +55,12 @@ export default function Navigation() {
                   Dashboard
                 </Link>
                 <Link 
+                  to="/properties" 
+                  className="text-gray-700 hover:text-green-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-green-50"
+                >
+                  Properties
+                </Link>
+                <Link 
                   to="/profile" 
                   className="text-gray-700 hover:text-purple-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-purple-50"
                 >

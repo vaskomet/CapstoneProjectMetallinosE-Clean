@@ -6,6 +6,7 @@ import Navigation from './components/Navigation';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/Dashboard';
+import PropertiesDashboard from './components/PropertiesDashboard';
 import Profile from './components/Profile';
 import './App.css';
 
@@ -26,6 +27,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <Dashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/properties" 
+                element={
+                  <ProtectedRoute>
+                    <PropertiesDashboard />
                   </ProtectedRoute>
                 } 
               />
