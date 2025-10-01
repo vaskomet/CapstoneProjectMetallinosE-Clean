@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { propertiesAPI } from '../services/api';
 import PropertyCard from './PropertyCard';
+import PropertyCreateForm from './PropertyCreateForm';
 
 /**
  * PropertiesDashboard Component
  * 
  * Fetches client properties, uses Leaflet.js for maps, follows PascalCase per DEVELOPMENT_STANDARDS.md.
+ * Create form integrated for client property addition, follows PascalCase per DEVELOPMENT_STANDARDS.md; uses toast for feedback as in other integrations.
  * 
  * Features:
  * - Displays all properties in a responsive grid layout
@@ -15,8 +17,9 @@ import PropertyCard from './PropertyCard';
  * - Shows PropertyCard components with map integration
  * - Handles loading and error states
  * - Provides navigation to property creation for authenticated users
+ * - Integrated PropertyCreateForm modal for seamless property addition
  * 
- * Test with token from login, check map rendering, verify edit/delete ownership
+ * Test with token from login, check map rendering, verify edit/delete ownership, test property creation with GeoJSON and refresh dashboard
  */
 const PropertiesDashboard = () => {
   const { user, isAuthenticated } = useUser();
@@ -24,6 +27,7 @@ const PropertiesDashboard = () => {
   const [properties, setProperties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -63,7 +67,18 @@ const PropertiesDashboard = () => {
 
   // Handle create new property navigation
   const handleCreateProperty = () => {
-    navigate('/properties/create');
+    setShowCreateModal(true);
+  };
+
+  // Handle property creation success
+  const handlePropertyCreated = () => {
+    setShowCreateModal(false);
+    fetchProperties(); // Refresh the properties list
+  };
+
+  // Handle create modal cancel
+  const handleCreateCancel = () => {
+    setShowCreateModal(false);
   };
 
   if (!isAuthenticated) {
@@ -215,6 +230,18 @@ const PropertiesDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Property Creation Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <PropertyCreateForm
+              onPropertyCreated={handlePropertyCreated}
+              onCancel={handleCreateCancel}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

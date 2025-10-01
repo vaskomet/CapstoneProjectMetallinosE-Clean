@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
 import { UserProvider } from './contexts/UserContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navigation from './components/Navigation';
@@ -7,7 +8,9 @@ import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/Dashboard';
 import PropertiesDashboard from './components/PropertiesDashboard';
+import CleaningJobsPool from './components/CleaningJobsPool';
 import Profile from './components/Profile';
+import 'react-toastify/dist/ReactToastify.css';
 import './App.css';
 
 // Dashboard route to be expanded with dashboards in Days 12-13 per DevelopmentTimeline.rtf
@@ -39,6 +42,14 @@ function App() {
                 } 
               />
               <Route 
+                path="/jobs" 
+                element={
+                  <ProtectedRoute>
+                    <CleaningJobsPool />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/profile" 
                 element={
                   <ProtectedRoute>
@@ -49,6 +60,20 @@ function App() {
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </main>
+          
+          {/* Toast Container for notifications */}
+          <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="light"
+          />
         </div>
       </Router>
     </UserProvider>

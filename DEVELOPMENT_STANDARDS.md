@@ -14,11 +14,12 @@ E-Clean is a web application connecting clients and cleaners, built with Django 
 - **Admin**: Django Admin with custom interfaces
 
 ### Frontend (React)
-- **Framework**: React 18.3 with Vite 7.x
-- **Routing**: React Router DOM
-- **HTTP Client**: Axios 1.7+
-- **Styling**: Tailwind CSS v4 with forms & typography plugins
-- **State Management**: React Context API
+- **Framework**: React 19.1.1 with Vite 7.x
+- **Routing**: React Router DOM 7.9.3
+- **HTTP Client**: Axios 1.12.2
+- **Styling**: Tailwind CSS v3.4.17 with forms plugin
+- **Maps**: Leaflet 1.9.4 with react-leaflet 5.0.0
+- **State Management**: React Context API with useUser hook
 - **Build Tool**: Vite (development server on port 5173)
 
 ## Project Structure
@@ -68,13 +69,17 @@ CapstoneProjectMetallinos/
     │   ├── App.jsx                   # Main App component
     │   ├── index.css                 # Global styles (Tailwind)
     │   ├── components/               # React components
-    │   │   ├── Dashboard.jsx         # Main dashboard
-    │   │   ├── ProtectedRoute.jsx    # Route protection
+    │   │   ├── Dashboard.jsx         # Main dashboard with feature cards
+    │   │   ├── Navigation.jsx        # Navigation bar with auth links
+    │   │   ├── Profile.jsx           # User profile management
+    │   │   ├── PropertiesDashboard.jsx # Property management dashboard
+    │   │   ├── PropertyCard.jsx      # Individual property card with map
+    │   │   ├── ProtectedRoute.jsx    # Route protection component
     │   │   └── auth/                 # Authentication components
     │   │       ├── LoginForm.jsx     # Login form
     │   │       └── RegisterForm.jsx  # Registration form
     │   ├── contexts/                 # React contexts
-    │   │   └── UserContext.jsx       # User state management
+    │   │   └── UserContext.jsx       # User state management with useUser hook
     │   └── services/                 # API services
     │       └── api.js                # Axios configuration & API calls
     └── node_modules/                 # Node.js dependencies
@@ -102,17 +107,18 @@ CapstoneProjectMetallinos/
 ### Frontend (React)
 
 #### Components
-- **Component Names**: PascalCase (e.g., `LoginForm`, `RegisterForm`, `Dashboard`, `ProtectedRoute`)
-- **File Names**: PascalCase.jsx (e.g., `LoginForm.jsx`, `Dashboard.jsx`)
-- **Props**: camelCase (e.g., `isAuthenticated`, `userData`, `onSubmit`)
+- **Component Names**: PascalCase (e.g., `LoginForm`, `RegisterForm`, `Dashboard`, `ProtectedRoute`, `PropertiesDashboard`, `PropertyCard`)
+- **File Names**: PascalCase.jsx (e.g., `LoginForm.jsx`, `Dashboard.jsx`, `PropertyCard.jsx`)
+- **Props**: camelCase (e.g., `isAuthenticated`, `userData`, `onSubmit`, `onPropertyUpdate`)
 
 #### Functions & Variables
-- **Function Names**: camelCase (e.g., `handleSubmit`, `handleChange`, `validateForm`)
-- **Variable Names**: camelCase (e.g., `formData`, `isSubmitting`, `accessToken`)
+- **Function Names**: camelCase (e.g., `handleSubmit`, `handleChange`, `validateForm`, `getMapCenter`)
+- **Variable Names**: camelCase (e.g., `formData`, `isSubmitting`, `accessToken`, `isEditing`)
 - **Constants**: UPPER_SNAKE_CASE (e.g., `API_BASE_URL`, `TOKEN_STORAGE_KEY`)
 
-#### CSS Classes
-- **Tailwind Classes**: Standard Tailwind naming
+#### CSS Classes & Maps
+- **Tailwind Classes**: Standard Tailwind naming with responsive prefixes (e.g., `grid-cols-1 md:grid-cols-2 lg:grid-cols-3`)
+- **Leaflet Icons**: Custom divIcon with Tailwind styling for map markers
 - **Custom Classes**: kebab-case when needed
 
 ## API Conventions
@@ -122,19 +128,20 @@ CapstoneProjectMetallinos/
 Base URL: http://localhost:8000/api/
 
 Authentication:
-- POST /api/auth/login/           # User login
-- POST /api/auth/register/        # User registration  
-- GET  /api/auth/profile/         # Get user profile
-- PATCH /api/auth/profile/        # Update user profile
-- POST /api/token/refresh/        # Refresh JWT token
+- POST /api/auth/login/                   # User login
+- POST /api/auth/register/                # User registration  
+- GET  /api/auth/profile/                 # Get user profile
+- PATCH /api/auth/profile/                # Update user profile
+- POST /api/auth/change-password/         # Change user password
+- POST /api/token/refresh/                # Refresh JWT token
 
 Properties:
-- GET    /api/properties/         # List properties
-- POST   /api/properties/         # Create property
-- GET    /api/properties/{id}/    # Get property details
-- PATCH  /api/properties/{id}/    # Update property
-- DELETE /api/properties/{id}/    # Delete property
-- GET    /api/properties/service-types/  # List service types
+- GET    /api/properties/properties/      # List properties
+- POST   /api/properties/properties/      # Create property
+- GET    /api/properties/properties/{id}/ # Get property details
+- PATCH  /api/properties/properties/{id}/ # Update property
+- DELETE /api/properties/properties/{id}/ # Delete property
+- GET    /api/properties/service-types/   # List service types
 
 Cleaning Jobs:
 - GET    /api/jobs/               # List cleaning jobs
@@ -190,11 +197,16 @@ class User(AbstractBaseUser, PermissionsMixin):
 ```python
 class Property(models.Model):
     id = AutoField(primary_key=True)
-    name = CharField(max_length=200)
-    address = TextField()
-    property_type = CharField(max_length=50)
-    size = IntegerField()  # in square feet
     owner = ForeignKey(User, on_delete=CASCADE, related_name='properties')
+    address_line1 = CharField(max_length=255)
+    address_line2 = CharField(max_length=255, blank=True)
+    city = CharField(max_length=100)
+    state = CharField(max_length=100)
+    postal_code = CharField(max_length=20)
+    property_type = CharField(max_length=50, choices=PROPERTY_TYPE_CHOICES)
+    size_sqft = PositiveIntegerField(null=True, blank=True)
+    notes = TextField(blank=True)
+    location = PointField(null=True, blank=True)  # GeoJSON Point for maps
     created_at = DateTimeField(auto_now_add=True)
     updated_at = DateTimeField(auto_now=True)
 ```
@@ -233,21 +245,95 @@ class CleaningJob(models.Model):
 
 ### UserContext Structure
 ```javascript
+// Current implementation uses useUser hook
+const { user, isAuthenticated, login, register, logout, updateProfile, changePassword } = useUser();
+
+// User object structure:
 {
   user: {
     id: number,
     email: string,
     first_name: string,
     last_name: string,
+    phone_number: string,
     role: 'client' | 'cleaner' | 'admin'
   },
   isAuthenticated: boolean,
-  isLoading: boolean,
-  error: string | null,
   login: (credentials) => Promise<{success: boolean, error?: string}>,
   register: (userData) => Promise<{success: boolean, error?: string}>,
   logout: () => void,
-  updateProfile: (data) => Promise<{success: boolean, error?: string}>
+  updateProfile: (data) => Promise<{success: boolean, error?: string}>,
+    changePassword: (passwordData) => Promise<{success: boolean, error?: string}>
+}
+```
+
+## Maps & Geolocation
+
+### Leaflet.js Integration
+- **Library**: Leaflet 1.9.4 with react-leaflet 5.0.0
+- **Map Provider**: OpenStreetMap tiles
+- **Coordinate System**: GeoJSON format [longitude, latitude]
+- **Default Location**: San Francisco [37.7749, -122.4194] for fallback
+
+### Property Location Handling
+```javascript
+// Property location format (GeoJSON Point)
+{
+  "type": "Point",
+  "coordinates": [-122.4194, 37.7749]  // [longitude, latitude]
+}
+
+// Map center conversion for Leaflet (requires lat, lng)
+const getMapCenter = () => {
+  if (property.location && property.location.coordinates) {
+    return [property.location.coordinates[1], property.location.coordinates[0]]; // [lat, lng]
+  }
+  return [37.7749, -122.4194]; // Default fallback
+};
+```
+
+### Map Components
+- **MapContainer**: Main map wrapper with zoom and scroll controls
+- **TileLayer**: OpenStreetMap tile provider with attribution
+- **Marker**: Custom blue circular markers with white borders
+- **Popup**: Property type and address information display
+
+## Component Architecture
+
+### Current Components
+
+#### Authentication & Navigation
+- **LoginForm**: User authentication with email/password
+- **RegisterForm**: User registration with role selection
+- **Navigation**: Responsive navigation bar with auth-based links
+- **ProtectedRoute**: Route wrapper that requires authentication
+
+#### Dashboard & Core Features
+- **Dashboard**: Main landing page with role-based feature cards
+- **Profile**: User profile management with password change
+- **PropertiesDashboard**: Property management interface with grid layout
+- **PropertyCard**: Individual property display with map integration
+
+### Component Communication Patterns
+- **Props Down**: Parent components pass data and handlers to children
+- **Callbacks Up**: Child components notify parents via callback functions
+- **Context API**: Global user state accessed via useUser hook
+- **API Integration**: Centralized through services/api.js
+
+### State Management Patterns
+```javascript
+// Local component state for UI interactions
+const [isEditing, setIsEditing] = useState(false);
+const [error, setError] = useState('');
+
+// Global auth state via useUser hook
+const { user, isAuthenticated, login, logout } = useUser();
+
+// API state management with loading and error handling
+const [properties, setProperties] = useState([]);
+const [loading, setLoading] = useState(true);
+```
+}
 }
 ```
 
@@ -267,10 +353,12 @@ class CleaningJob(models.Model):
 1. Create components in appropriate directories
 2. Use PascalCase for component names and files
 3. Implement proper prop types and state management
-4. Use UserContext for authentication state
-5. Make API calls through services/api.js
-6. Apply Tailwind CSS for styling
+4. Use useUser hook for authentication state (not direct UserContext)
+5. Make API calls through services/api.js with proper endpoints
+6. Apply Tailwind CSS for styling with responsive design
 7. Implement proper error handling and loading states
+8. For maps: Import Leaflet CSS and configure custom markers
+9. Use onPropertyUpdate callbacks for state synchronization
 
 ## Configuration Files
 
@@ -304,7 +392,7 @@ export default {
   },
   plugins: [
     require('@tailwindcss/forms'),
-    require('@tailwindcss/typography'),
+    // Note: @tailwindcss/typography removed - not currently used
   ],
 }
 ```
@@ -313,7 +401,7 @@ export default {
 ```javascript
 export default {
   plugins: {
-    '@tailwindcss/postcss': {},
+    tailwindcss: {},
     autoprefixer: {},
   },
 }
@@ -404,11 +492,15 @@ npm run dev
 # Install dependencies
 npm install
 
+# Install new packages (examples)
+npm install react-leaflet leaflet
+npm install @tailwindcss/forms
+
 # Build for production
 npm run build
 
-# Install new package
-npm install package-name
+# Lint code
+npm run lint
 ```
 
-This document should be updated as the project evolves and new conventions are established.
+This document reflects the current implementation as of October 2025, including property management with Leaflet.js integration, updated React 19.1.1, and the complete authentication system with profile management. Update as new features are added or conventions change.

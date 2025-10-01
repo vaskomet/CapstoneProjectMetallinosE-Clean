@@ -1,8 +1,10 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
+import { toast } from 'react-toastify';
 
 // Navigation component with links per DEVELOPMENT_STANDARDS.md
+// Role-based links per DEVELOPMENT_STANDARDS.md, uses kebab-case for URLs; integrates with useUser hook as in auth.
 // Uses kebab-case for URL paths and Tailwind styling
 export default function Navigation() {
   const { user, isAuthenticated, logout } = useUser();
@@ -10,6 +12,7 @@ export default function Navigation() {
 
   const handleLogout = () => {
     logout();
+    toast.success('Logged out successfully');
     navigate('/login');
   };
 
@@ -54,12 +57,22 @@ export default function Navigation() {
                 >
                   Dashboard
                 </Link>
-                <Link 
-                  to="/properties" 
-                  className="text-gray-700 hover:text-green-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-green-50"
-                >
-                  Properties
-                </Link>
+                {(user?.role === 'client' || user?.role === 'cleaner') && (
+                  <Link 
+                    to="/jobs" 
+                    className="text-gray-700 hover:text-purple-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-purple-50"
+                  >
+                    {user?.role === 'client' ? 'Bookings' : 'Assignments'}
+                  </Link>
+                )}
+                {user?.role === 'client' && (
+                  <Link 
+                    to="/properties" 
+                    className="text-gray-700 hover:text-green-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-green-50"
+                  >
+                    Properties
+                  </Link>
+                )}
                 <Link 
                   to="/profile" 
                   className="text-gray-700 hover:text-purple-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-purple-50"
