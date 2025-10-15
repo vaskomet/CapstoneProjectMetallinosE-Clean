@@ -106,7 +106,8 @@ export function UserProvider({ children }) {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const response = await authAPI.register(userData);
-      const { access, refresh, user } = response.data;
+      // authAPI.register already returns response.data, so access directly
+      const { access, refresh, user } = response;
 
       localStorage.setItem('access_token', access);
       localStorage.setItem('refresh_token', refresh);

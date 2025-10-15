@@ -65,10 +65,18 @@ export default function Navigation() {
                     {user?.role === 'client' ? 'Bookings' : 'Assignments'}
                   </Link>
                 )}
+                {(user?.role === 'client' || user?.role === 'cleaner') && (
+                  <Link 
+                    to="/completed-jobs" 
+                    className="text-gray-700 hover:text-green-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-green-50"
+                  >
+                    {user?.role === 'client' ? 'Job History' : 'Completed Jobs'}
+                  </Link>
+                )}
                 {user?.role === 'client' && (
                   <Link 
                     to="/properties" 
-                    className="text-gray-700 hover:text-green-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-green-50"
+                    className="text-gray-700 hover:text-emerald-600 px-4 py-2 rounded-xl text-base font-semibold transition-all duration-200 hover:bg-emerald-50"
                   >
                     Properties
                   </Link>

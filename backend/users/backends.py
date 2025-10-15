@@ -3,19 +3,25 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-class EmailBackend(BaseBackend):
+class EmailUsernameBackend(BaseBackend):
     """
-    Custom authentication backend that uses email instead of username.
+    Custom authentication backend that supports both email and username login.
     """
     def authenticate(self, request, username=None, password=None, **kwargs):
-        # Check if username is actually an email or use email from kwargs
-        email = username or kwargs.get('email')
+        # Get the login identifier (could be email or username)
+        login_identifier = username or kwargs.get('email') or kwargs.get('username')
         
-        if email is None:
+        if login_identifier is None or password is None:
             return None
             
         try:
-            user = User.objects.get(email=email)
+            # Try to find user by email first
+            if '@' in login_identifier:
+                user = User.objects.get(email=login_identifier)
+            else:
+                # Try to find user by username
+                user = User.objects.get(username=login_identifier)
+                
             if user.check_password(password):
                 return user
         except User.DoesNotExist:

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
 import { authAPI } from '../services/api';
+import PhoneInput from './PhoneInput';
+import ServiceAreaManager from './ServiceAreaManager';
 
 // Profile component following PascalCase naming per DEVELOPMENT_STANDARDS.md
 // Uses modern UI with gradients and proper spacing
@@ -10,6 +12,7 @@ export default function Profile() {
     first_name: '',
     last_name: '',
     phone_number: '',
+    country_code: '+30', // Default to Greece
   });
   const [passwordData, setPasswordData] = useState({
     current_password: '',
@@ -28,6 +31,7 @@ export default function Profile() {
         first_name: user.first_name || '',
         last_name: user.last_name || '',
         phone_number: user.phone_number || '',
+        country_code: user.country_code || '+30',
       });
     }
   }, [user]);
@@ -37,6 +41,28 @@ export default function Profile() {
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const handleCountryCodeChange = (countryCode) => {
+    setFormData({
+      ...formData,
+      country_code: countryCode,
+    });
+  };
+
+  const handlePhoneNumberChange = (phoneNumber) => {
+    setFormData({
+      ...formData,
+      phone_number: phoneNumber,
+    });
+  };
+
+  const validatePhoneNumber = () => {
+    const fullPhoneNumber = formData.country_code + formData.phone_number;
+    if (fullPhoneNumber.length > 14) {
+      return 'Phone number with country code cannot exceed 14 characters';
+    }
+    return null;
   };
 
   const handlePasswordChange = (e) => {
@@ -51,6 +77,14 @@ export default function Profile() {
     setIsUpdating(true);
     setError('');
     setMessage('');
+
+    // Validate phone number length
+    const phoneError = validatePhoneNumber();
+    if (phoneError) {
+      setError(phoneError);
+      setIsUpdating(false);
+      return;
+    }
 
     const result = await updateProfile(formData);
     
@@ -144,6 +178,17 @@ export default function Profile() {
               </div>
 
               <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Username</label>
+                <input
+                  type="text"
+                  value={user?.username || ''}
+                  disabled
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl bg-gray-50 text-gray-500 cursor-not-allowed"
+                />
+                <p className="text-xs text-gray-500">Username cannot be changed</p>
+              </div>
+
+              <div className="space-y-2">
                 <label className="block text-sm font-semibold text-gray-700">Role</label>
                 <input
                   type="text"
@@ -184,19 +229,17 @@ export default function Profile() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="phone_number" className="block text-sm font-semibold text-gray-700">
-                  Phone Number
-                </label>
-                <input
-                  id="phone_number"
-                  name="phone_number"
-                  type="tel"
-                  value={formData.phone_number}
-                  onChange={handleProfileChange}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300"
-                  placeholder="+1 (555) 123-4567"
-                />
+              <PhoneInput
+                countryCode={formData.country_code}
+                phoneNumber={formData.phone_number}
+                onCountryChange={handleCountryCodeChange}
+                onPhoneChange={handlePhoneNumberChange}
+                className="space-y-2"
+              />
+              <div className="mt-1">
+                <p className="text-xs text-gray-500">
+                  Total length: {(formData.country_code + formData.phone_number).length}/14 characters
+                </p>
               </div>
 
               <button
@@ -330,6 +373,22 @@ export default function Profile() {
             )}
           </div>
         </div>
+
+        {/* Service Areas - Only for Cleaners */}
+        {user?.role === 'cleaner' && (
+          <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl p-8 border border-white/20">
+            <div className="flex items-center space-x-3 mb-8">
+              <div className="h-10 w-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
+                <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Service Areas</h2>
+            </div>
+            <ServiceAreaManager />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,28 +1,24 @@
 from django.contrib import admin
-from .models import CleaningJob
+from .models import CleaningJob, JobBid
 
 @admin.register(CleaningJob)
 class CleaningJobAdmin(admin.ModelAdmin):
     """
-    CleaningJob admin interface for managing booking lifecycle.
-    Displays job status, client, cleaner, property, and scheduling information.
+    CleaningJob admin interface for managing booking lifecycle with bidding system.
     """
-    list_display = ('id', 'client', 'cleaner', 'property', 'status', 'scheduled_date', 'total_cost', 'created_at')
+    list_display = ('id', 'client', 'cleaner', 'property', 'status', 'scheduled_date', 'client_budget', 'final_price', 'created_at')
     list_filter = ('status', 'scheduled_date', 'created_at')
     search_fields = ('client__email', 'cleaner__email', 'property__address_line1', 'property__city')
-    list_select_related = ('client', 'cleaner', 'property')
+    list_select_related = ('client', 'cleaner', 'property', 'accepted_bid')
     date_hierarchy = 'scheduled_date'
     
     fieldsets = (
         ('Job Assignment', {'fields': ('client', 'cleaner', 'property')}),
         ('Status & Timing', {'fields': ('status', 'scheduled_date', 'start_time', 'end_time')}),
-        ('Service Details', {'fields': ('services_requested', 'checklist', 'notes')}),
-        ('Pricing', {'fields': ('total_cost', 'discount_applied')}),
+        ('Service Details', {'fields': ('services_description', 'checklist', 'notes')}),
+        ('Pricing & Bidding', {'fields': ('client_budget', 'final_price', 'accepted_bid')}),
         ('Eco Impact', {'fields': ('eco_impact_metrics',)}),
     )
-    
-    # Enable filtering by services requested
-    filter_horizontal = ('services_requested',)
     
     # Read-only fields for certain data
     readonly_fields = ('created_at', 'updated_at')
@@ -45,5 +41,24 @@ class CleaningJobAdmin(admin.ModelAdmin):
     # Customize the queryset to optimize database queries
     def get_queryset(self, request):
         return super().get_queryset(request).select_related(
-            'client', 'cleaner', 'property'
-        ).prefetch_related('services_requested')
+            'client', 'cleaner', 'property', 'accepted_bid'
+        )
+
+@admin.register(JobBid)
+class JobBidAdmin(admin.ModelAdmin):
+    """
+    JobBid admin interface for managing cleaner bids on jobs.
+    """
+    list_display = ('id', 'job', 'cleaner', 'bid_amount', 'estimated_duration', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('job__id', 'cleaner__email', 'cleaner__username')
+    list_select_related = ('job', 'cleaner', 'job__client')
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Bid Details', {'fields': ('job', 'cleaner', 'bid_amount', 'estimated_duration')}),
+        ('Message', {'fields': ('message',)}),
+        ('Status', {'fields': ('status',)}),
+    )
+    
+    readonly_fields = ('created_at', 'updated_at')

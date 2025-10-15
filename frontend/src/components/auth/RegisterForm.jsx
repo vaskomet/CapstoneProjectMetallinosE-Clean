@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
+import PhoneInput from '../PhoneInput';
 
 // Role selection drives dashboard routing
 // Use PascalCase for component per DEVELOPMENT_STANDARDS.md
 export default function RegisterForm() {
   const [formData, setFormData] = useState({
     email: '',
+    username: '',
     password: '',
     password_confirm: '',
     first_name: '',
     last_name: '',
     phone_number: '',
+    country_code: '+30', // Default to Greece
     role: 'client',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +40,8 @@ export default function RegisterForm() {
     const newErrors = {};
 
     if (!formData.email) newErrors.email = 'Email is required';
+    if (!formData.username) newErrors.username = 'Username is required';
+    if (formData.username.length < 3) newErrors.username = 'Username must be at least 3 characters';
     if (!formData.password) newErrors.password = 'Password is required';
     if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
     if (!formData.password_confirm) newErrors.password_confirm = 'Please confirm your password';
@@ -161,19 +166,33 @@ export default function RegisterForm() {
               </div>
 
               <div className="space-y-3">
-                <label htmlFor="phone_number" className="block text-base font-semibold text-gray-700">
-                  Phone Number <span className="text-gray-400 text-sm font-normal">(Optional)</span>
+                <label htmlFor="username" className="block text-base font-semibold text-gray-700">
+                  Username
                 </label>
                 <input
-                  id="phone_number"
-                  name="phone_number"
-                  type="tel"
+                  id="username"
+                  name="username"
+                  type="text"
+                  autoComplete="username"
+                  required
                   className="block w-full px-6 py-4 border-2 border-gray-200 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all duration-300"
-                  placeholder="+1 (555) 123-4567"
-                  value={formData.phone_number}
+                  placeholder="johndoe"
+                  value={formData.username}
                   onChange={handleChange}
                 />
+                {errors.username && (
+                  <p className="text-sm text-red-600 font-medium">{errors.username}</p>
+                )}
               </div>
+
+              <PhoneInput
+                countryCode={formData.country_code}
+                phoneNumber={formData.phone_number}
+                onCountryChange={(countryCode) => setFormData({...formData, country_code: countryCode})}
+                onPhoneChange={(phoneNumber) => setFormData({...formData, phone_number: phoneNumber})}
+                error={errors.phone_number}
+                className="space-y-3"
+              />
 
               <div className="space-y-3">
                 <label htmlFor="role" className="block text-base font-semibold text-gray-700">

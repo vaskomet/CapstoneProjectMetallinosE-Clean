@@ -6,7 +6,7 @@ import { useUser } from '../../contexts/UserContext';
 // Use camelCase for props per DEVELOPMENT_STANDARDS.md
 export default function LoginForm() {
   const [formData, setFormData] = useState({
-    email: '',
+    email: '', // Backend expects 'email' field (but accepts email or username as value)
     password: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,19 +70,22 @@ export default function LoginForm() {
             <div className="space-y-6">
               <div className="space-y-3">
                 <label htmlFor="email" className="block text-base font-semibold text-gray-700">
-                  Email address
+                  Email or Username
                 </label>
                 <input
                   id="email"
                   name="email"
-                  type="email"
-                  autoComplete="email"
+                  type="text"
+                  autoComplete="username"
                   required
                   className="block w-full px-6 py-4 border-2 border-gray-200 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 text-base"
-                  placeholder="Enter your email"
+                  placeholder="Enter your email or username"
                   value={formData.email}
                   onChange={handleChange}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  You can sign in with either your email address or username
+                </p>
               </div>
               
               <div className="space-y-3">

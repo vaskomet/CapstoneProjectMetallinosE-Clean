@@ -6,38 +6,49 @@ from rest_framework import serializers
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import UserRegistrationSerializer, UserSerializer, PasswordChangeSerializer
+from .serializers import UserRegistrationSerializer, UserSerializer, PasswordChangeSerializer, ServiceAreaSerializer
+from .models import ServiceArea
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Custom token obtain pair serializer to include user data in the response.
     """
-    username_field = 'email'  # Use email field instead of username
+    username_field = 'email'  # Keep using 'email' field for API compatibility
     
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         # Add custom claims
         token['email'] = user.email
+        token['username'] = user.username
         token['role'] = user.role
         return token
 
     def validate(self, attrs):
-        # Get email and password from the request
-        email = attrs.get('email')
+        # Get login identifier (email or username) from the email field
+        login_identifier = attrs.get('email')
         password = attrs.get('password')
         
-        if not email or not password:
+        if not login_identifier or not password:
             raise serializers.ValidationError('Email and password are required.')
         
-        # Check if user exists first
+        # Check if user exists by email or username
         from django.contrib.auth import get_user_model
         User = get_user_model()
         
+        user = None
         try:
-            user = User.objects.get(email=email)
+            if '@' in login_identifier:
+                # Login with email
+                user = User.objects.get(email=login_identifier)
+            else:
+                # Login with username
+                user = User.objects.get(username=login_identifier)
         except User.DoesNotExist:
-            raise serializers.ValidationError('No account found with this email address.')
+            if '@' in login_identifier:
+                raise serializers.ValidationError('No account found with this email address.')
+            else:
+                raise serializers.ValidationError('No account found with this username.')
         
         # User exists, now check password
         if not user.check_password(password):
@@ -118,4 +129,52 @@ class PasswordChangeView(APIView):
                 status=status.HTTP_200_OK
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ServiceAreaListCreateView(generics.ListCreateAPIView):
+    """
+    List and create service areas for cleaners.
+    """
+    serializer_class = ServiceAreaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Return service areas for the authenticated cleaner.
+        """
+        user = self.request.user
+        if hasattr(user, 'role') and user.role == 'cleaner':
+            return ServiceArea.objects.filter(cleaner=user)
+        elif hasattr(user, 'role') and user.role == 'admin':
+            return ServiceArea.objects.all()
+        else:
+            return ServiceArea.objects.none()
+
+    def perform_create(self, serializer):
+        """
+        Create service area for the authenticated cleaner.
+        """
+        if not (hasattr(self.request.user, 'role') and self.request.user.role == 'cleaner'):
+            raise serializers.ValidationError("Only cleaners can create service areas.")
+        serializer.save(cleaner=self.request.user)
+
+
+class ServiceAreaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, and delete service areas.
+    """
+    serializer_class = ServiceAreaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Return service areas for the authenticated cleaner.
+        """
+        user = self.request.user
+        if hasattr(user, 'role') and user.role == 'cleaner':
+            return ServiceArea.objects.filter(cleaner=user)
+        elif hasattr(user, 'role') and user.role == 'admin':
+            return ServiceArea.objects.all()
+        else:
+            return ServiceArea.objects.none()
 

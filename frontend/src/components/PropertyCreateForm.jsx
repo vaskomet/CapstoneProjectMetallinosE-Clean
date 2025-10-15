@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import { useUser } from '../contexts/UserContext';
@@ -7,6 +7,8 @@ import { toast } from 'react-toastify';
 
 // Fix for default icons in Leaflet with Webpack
 import L from 'leaflet';
+import 'leaflet-control-geocoder/dist/Control.Geocoder.css';
+import 'leaflet-control-geocoder';
 
 let DefaultIcon = L.divIcon({
   html: '<div style="background-color: #ef4444; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
@@ -23,6 +25,117 @@ const createCustomIcon = () => {
     iconAnchor: [12, 12],
     className: 'custom-marker'
   });
+};
+
+/**
+ * Address Search Component using geocoding
+ */
+const AddressSearch = ({ onAddressSelect }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const searchAddress = async (query) => {
+    if (!query || query.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // Using Nominatim (OpenStreetMap) geocoding service
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`
+      );
+      const results = await response.json();
+      
+      const formattedSuggestions = results.map(result => ({
+        id: result.place_id,
+        displayName: result.display_name,
+        address: {
+          address_line1: result.address?.house_number && result.address?.road 
+            ? `${result.address.house_number} ${result.address.road}`
+            : result.address?.road || result.display_name.split(',')[0],
+          city: result.address?.city || result.address?.town || result.address?.village || '',
+          state: result.address?.state || '',
+          postal_code: result.address?.postcode || '',
+          country: result.address?.country || ''
+        },
+        coordinates: {
+          lat: parseFloat(result.lat),
+          lng: parseFloat(result.lon)
+        }
+      }));
+      
+      setSuggestions(formattedSuggestions);
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      toast.error('Failed to search addresses');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchChange = (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    // Debounce search
+    setTimeout(() => {
+      if (query === searchQuery) {
+        searchAddress(query);
+      }
+    }, 300);
+  };
+
+  const selectAddress = (suggestion) => {
+    setSearchQuery(suggestion.displayName);
+    setSuggestions([]);
+    onAddressSelect(suggestion);
+  };
+
+  return (
+    <div className="relative">
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        Search Address
+      </label>
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={handleSearchChange}
+        placeholder="Type an address to search..."
+        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      
+      {isSearching && (
+        <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 p-2 z-10">
+          <div className="flex items-center">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+            <span className="ml-2 text-sm text-gray-600">Searching...</span>
+          </div>
+        </div>
+      )}
+      
+      {suggestions.length > 0 && (
+        <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 max-h-60 overflow-y-auto z-10">
+          {suggestions.map((suggestion) => (
+            <div
+              key={suggestion.id}
+              className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-b-0"
+              onClick={() => selectAddress(suggestion)}
+            >
+              <div className="text-sm font-medium text-gray-900">
+                {suggestion.address.address_line1}
+              </div>
+              <div className="text-xs text-gray-600">
+                {suggestion.address.city}, {suggestion.address.state} {suggestion.address.postal_code}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 /**
@@ -133,6 +246,30 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
       hasLocation: false
     });
     toast.info('Location cleared');
+  };
+
+  // Handle address selection from geocoding
+  const handleAddressSelect = (addressData) => {
+    // Update form with selected address
+    setFormData(prev => ({
+      ...prev,
+      address_line1: addressData.address.address_line1,
+      city: addressData.address.city,
+      state: addressData.address.state,
+      postal_code: addressData.address.postal_code,
+      country: addressData.address.country || 'US',
+      latitude: addressData.coordinates.lat.toString(),
+      longitude: addressData.coordinates.lng.toString()
+    }));
+
+    // Update map location
+    setMapLocation({
+      lat: addressData.coordinates.lat,
+      lng: addressData.coordinates.lng,
+      hasLocation: true
+    });
+
+    toast.success('Address selected and location set!');
   };
 
   // Validate form data
@@ -282,6 +419,13 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         {/* Address Section */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-gray-900">Address Information</h3>
+          
+          {/* Address Search with Geocoding */}
+          <AddressSearch onAddressSelect={handleAddressSelect} />
+          
+          <div className="text-sm text-gray-600 text-center">
+            — OR fill in manually —
+          </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

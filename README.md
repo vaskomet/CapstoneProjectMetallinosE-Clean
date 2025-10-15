@@ -15,15 +15,63 @@ The E-Clean Platform is a modern web application designed to connect clients wit
   - **Framework:** Django 5.2
   - **API:** Django Rest Framework (DRF)
   - **Authentication:** JWT (JSON Web Tokens)
+  - **WebSockets:** Django Channels (for real-time features)
+  - **Task Queue:** Celery with Redis
 - **Frontend:**
-  - **Framework:** React 18
+  - **Framework:** React 19.1.1
   - **Styling:** Tailwind CSS
+  - **Maps:** Leaflet.js with react-leaflet
+  - **Calendar:** FullCalendar.js
 - **Database:**
   - **Development:** SQLite
   - **Production:** PostgreSQL
-- **Deployment:**
+- **Infrastructure:**
+  - **Message Broker:** Redis (for WebSocket channels and Celery)
+  - **Containerization:** Docker & Docker Compose
   - **CI/CD:** GitHub Actions
   - **Hosting:** (To be determined - e.g., Heroku, AWS, Vercel)
+
+## Real-Time Features Scope
+
+### Primary Feature: In-App Chat System
+- **1:1 Chat:** Direct messaging between clients and cleaners tied to specific bookings
+- **Auto-Room Creation:** Chat rooms automatically created when a cleaning job is accepted
+- **Job Context:** Chat messages include job details and status for better communication
+- **Message Persistence:** Chat history stored in database for reference and dispute resolution
+
+### Secondary Feature: Real-Time Notifications
+- **Booking Updates:** Instant notifications for status changes (accepted, started, completed)
+- **New Messages:** Real-time alerts for new chat messages
+- **Job Reminders:** Automated notifications for upcoming appointments
+- **System Alerts:** Important platform updates and maintenance notifications
+
+### Security Requirements
+- **JWT Authentication:** WebSocket connections authenticated using JWT tokens
+- **HTTPS/WSS:** Enforce secure WebSocket connections (wss://) in production
+- **Room Authorization:** Validate participants to prevent unauthorized chat access
+- **Data Encryption:** All chat messages encrypted in transit and at rest
+- **Rate Limiting:** Implement message rate limiting to prevent spam
+
+### Accessibility Standards
+- **Screen Reader Support:** ARIA labels and landmarks for chat components
+- **Keyboard Navigation:** Full keyboard accessibility for chat interface
+- **High Contrast:** Support for high contrast mode in chat UI
+- **Text Scaling:** Responsive text sizing for chat messages
+- **Focus Management:** Proper focus handling for real-time updates
+
+### Performance Goals
+- **Concurrent Users:** Support minimum 100 concurrent chat users initially
+- **Message Latency:** Sub-500ms message delivery in optimal conditions
+- **Scalability:** Redis clustering support for horizontal scaling
+- **Connection Recovery:** Automatic reconnection handling for WebSocket drops
+- **Mobile Optimization:** Optimized for mobile device battery and bandwidth
+
+### Technical Implementation
+- **WebSocket Protocol:** Django Channels with Redis channel layer
+- **Message Queue:** Celery for background notification processing
+- **Database Design:** Optimized chat models with proper indexing
+- **Frontend Integration:** React hooks for WebSocket management
+- **Testing Strategy:** Unit tests, integration tests, and load testing
 
 ### Branching Strategy
 - **`main`:** This branch contains production-ready code. All deployments to the live server are made from this branch.

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
+import ErrorHandlingDemo from './ErrorHandlingDemo';
 
 export default function Dashboard() {
   const { user } = useUser();
@@ -16,10 +17,10 @@ export default function Dashboard() {
 
   const getWelcomeMessage = (role) => {
     switch(role) {
-      case 'client': return 'Find and book professional cleaning services for your property.';
-      case 'cleaner': return 'Manage your cleaning services and connect with clients.';
+      case 'client': return 'Post cleaning jobs with your budget and get competitive bids from professional cleaners.';
+      case 'cleaner': return 'Browse available jobs and submit competitive bids to win cleaning contracts.';
       case 'admin': return 'Oversee the platform and manage all users and services.';
-      default: return 'Welcome to the E-Clean platform.';
+      default: return 'Welcome to the E-Clean marketplace.';
     }
   };
 
@@ -50,8 +51,9 @@ export default function Dashboard() {
           )
         },
         {
-          title: 'Cleaning Jobs',
-          description: 'Book and track your cleaning appointments.',
+          title: 'Post Cleaning Jobs',
+          description: 'Post jobs with your budget and review cleaner bids.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -63,8 +65,9 @@ export default function Dashboard() {
     } else if (role === 'cleaner') {
       return [
         {
-          title: 'Available Jobs',
-          description: 'View and accept cleaning job requests.',
+          title: 'Browse Jobs & Bid',
+          description: 'View available jobs and submit competitive bids.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6m0 0a2 2 0 002 2h2m-2-2a2 2 0 00-2-2m2 2v12a2 2 0 002 2h-2a2 2 0 01-2-2V8z" />
@@ -72,8 +75,9 @@ export default function Dashboard() {
           )
         },
         {
-          title: 'My Jobs',
-          description: 'Manage your assigned cleaning jobs.',
+          title: 'My Bids & Jobs',
+          description: 'Track your bids and manage accepted jobs.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -245,6 +249,19 @@ export default function Dashboard() {
               <p className="text-gray-400 text-sm mt-2">Your activity will appear here once you start using the platform</p>
             </div>
           </div>
+        </div>
+
+        {/* Error Handling Demo Section */}
+        <div className="bg-gradient-to-r from-white to-yellow-50 rounded-2xl shadow-lg p-8 border border-yellow-100">
+          <h2 className="text-2xl font-bold text-gray-800 mb-8 flex items-center space-x-3">
+            <div className="p-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+            </div>
+            <span>Error Handling Demo</span>
+          </h2>
+          <ErrorHandlingDemo />
         </div>
       </div>
     </div>

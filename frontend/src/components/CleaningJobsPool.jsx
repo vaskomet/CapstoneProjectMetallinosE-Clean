@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import { useUser } from '../contexts/UserContext';
-import { cleaningJobsAPI, propertiesAPI } from '../services/api';
+import { cleaningJobsAPI, propertiesAPI, jobBidsAPI } from '../services/api';
+import LocationFilter from './LocationFilter';
+import JobWorkflowModal from './JobWorkflowModal';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -40,12 +42,35 @@ const CleaningJobsPool = () => {
     scheduled_date: '',
     start_time: '',
     end_time: '',
-    services_requested: [],
+    services_description: '',
+    client_budget: '',
     checklist: [],
     notes: '',
-    discount_applied: 0,
     estimated_duration: 60
   });
+  
+  // Bidding related states
+  const [bids, setBids] = useState([]);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [bidFormData, setBidFormData] = useState({
+    bid_amount: '',
+    estimated_duration: 60,
+    message: ''
+  });
+
+  // Location filter state (for cleaners)
+  const [locationFilter, setLocationFilter] = useState({
+    type: 'all',
+    areaId: '',
+    distance: '5'
+  });
+
+  // Job workflow modal states
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+  const [workflowAction, setWorkflowAction] = useState(null); // 'confirm', 'start', 'finish'
+
+  // Ref to prevent multiple simultaneous fetch calls
+  const fetchingRef = useRef(false);
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -57,12 +82,25 @@ const CleaningJobsPool = () => {
 
   // Fetch jobs from API
   const fetchJobs = async () => {
+    if (fetchingRef.current) return; // Prevent multiple simultaneous calls
+    
+    fetchingRef.current = true;
     setLoading(true);
     setError('');
 
     try {
-      const response = await cleaningJobsAPI.getAll();
-      const jobsData = response.data.results || response.data || [];
+      // Build query parameters for cleaners based on location filter
+      const params = {};
+      if (user?.role === 'cleaner' && locationFilter.type !== 'all') {
+        if (locationFilter.type === 'myAreas' && locationFilter.areaId) {
+          params.service_area_id = locationFilter.areaId;
+        } else if (locationFilter.type === 'distance') {
+          params.distance_km = locationFilter.distance;
+        }
+      }
+
+      const response = await cleaningJobsAPI.getAll(params);
+      const jobsData = response.results || response || [];
       setJobs(jobsData);
     } catch (err) {
       setError('Failed to fetch jobs. Please try again later.');
@@ -70,6 +108,7 @@ const CleaningJobsPool = () => {
       console.error('Fetch jobs error:', err);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   };
 
@@ -79,7 +118,7 @@ const CleaningJobsPool = () => {
     
     try {
       const response = await propertiesAPI.getAll();
-      const propertiesData = response.data.results || response.data || [];
+      const propertiesData = response.results || response || [];
       setProperties(propertiesData);
     } catch (err) {
       console.error('Fetch properties error:', err);
@@ -91,7 +130,7 @@ const CleaningJobsPool = () => {
   const fetchServiceTypes = async () => {
     try {
       const response = await propertiesAPI.getServiceTypes();
-      const serviceTypesData = response.data.results || response.data || [];
+      const serviceTypesData = response.results || response || [];
       setServiceTypes(serviceTypesData);
     } catch (err) {
       console.error('Fetch service types error:', err);
@@ -99,14 +138,21 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Load jobs and properties on component mount
+  // Load jobs, properties and bids on component mount
   useEffect(() => {
     if (isAuthenticated) {
       fetchJobs();
+      fetchBids();
       fetchProperties();
-      fetchServiceTypes();
     }
   }, [isAuthenticated, user?.role]);
+
+  // Refetch jobs when location filter changes (for cleaners only)
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'cleaner') {
+      fetchJobs();
+    }
+  }, [locationFilter]);
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -117,17 +163,29 @@ const CleaningJobsPool = () => {
     }));
   };
 
-  // Handle services selection
-  const handleServicesChange = (e) => {
-    const { value, checked } = e.target;
-    const serviceId = parseInt(value); // Convert to integer ID
-    
-    setFormData(prev => ({
+  // Handle bid form input changes
+  const handleBidInputChange = (e) => {
+    const { name, value } = e.target;
+    setBidFormData(prev => ({
       ...prev,
-      services_requested: checked
-        ? [...prev.services_requested, serviceId]
-        : prev.services_requested.filter(service => service !== serviceId)
+      [name]: value
     }));
+  };
+
+  // Handle location filter changes
+  const handleLocationFilterChange = (filter) => {
+    setLocationFilter(filter);
+  };
+
+  // Fetch bids for jobs
+  const fetchBids = async () => {
+    try {
+      const response = await jobBidsAPI.getAll();
+      const bidsData = response.results || response || [];
+      setBids(bidsData);
+    } catch (err) {
+      console.error('Fetch bids error:', err);
+    }
   };
 
   // Handle checklist items
@@ -157,8 +215,13 @@ const CleaningJobsPool = () => {
       return;
     }
 
-    if (!formData.services_requested || formData.services_requested.length === 0) {
-      toast.error('Please select at least one service');
+    if (!formData.services_description) {
+      toast.error('Please describe the services needed');
+      return;
+    }
+    
+    if (!formData.client_budget) {
+      toast.error('Please set your budget');
       return;
     }
 
@@ -180,10 +243,10 @@ const CleaningJobsPool = () => {
         scheduled_date: '',
         start_time: '',
         end_time: '',
-        services_requested: [],
+        services_description: '',
+        client_budget: '',
         checklist: [],
         notes: '',
-        discount_applied: 0,
         estimated_duration: 60
       });
       fetchJobs(); // Refresh jobs list
@@ -210,17 +273,157 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Handle claim job (for cleaners)
-  const handleClaimJob = async (jobId) => {
+  // Handle workflow actions with photo uploads
+  const handleWorkflowAction = (action) => {
+    setWorkflowAction(action);
+    setShowWorkflowModal(true);
+  };
+
+  const handleJobUpdated = (updatedJob) => {
+    // Update the job in the jobs list
+    setJobs(prevJobs => 
+      prevJobs.map(job => 
+        job.id === updatedJob.id ? updatedJob : job
+      )
+    );
+    
+    // Update selectedJob if it's the same job
+    if (selectedJob && selectedJob.id === updatedJob.id) {
+      setSelectedJob(updatedJob);
+    }
+    
+    // Close workflow modal
+    setShowWorkflowModal(false);
+    setWorkflowAction(null);
+  };
+
+  const closeWorkflowModal = () => {
+    setShowWorkflowModal(false);
+    setWorkflowAction(null);
+  };
+
+  // Handle bid submission (for cleaners)
+  const handleSubmitBid = async (e, jobId) => {
+    e.preventDefault();
+    
+    if (!bidFormData.bid_amount) {
+      toast.error('Please enter your bid amount');
+      return;
+    }
+    
+    if (!bidFormData.message) {
+      toast.error('Please add a message with your bid');
+      return;
+    }
+
     try {
-      await cleaningJobsAPI.claimJob(jobId);
-      toast.success('Job claimed successfully!');
-      fetchJobs(); // Refresh jobs list
-      setShowJobModal(false);
+      const bidData = {
+        ...bidFormData,
+        job: jobId,
+        bid_amount: parseFloat(bidFormData.bid_amount)
+      };
+      
+      await jobBidsAPI.create(bidData);
+      toast.success('Bid submitted successfully!');
+      setShowBidModal(false);
+      setBidFormData({
+        bid_amount: '',
+        estimated_duration: 60,
+        message: ''
+      });
+      
+      // Refresh all data
+      const [jobsResponse, bidsResponse] = await Promise.all([
+        cleaningJobsAPI.getAll(),
+        jobBidsAPI.getAll()
+      ]);
+      
+      const jobsData = jobsResponse.results || jobsResponse || [];
+      const bidsData = bidsResponse.results || bidsResponse || [];
+      
+      setJobs(jobsData);
+      setBids(bidsData);
+      
+      // Update the selected job with the refreshed data
+      const updatedJob = jobsData.find(job => job.id === jobId);
+      if (updatedJob) {
+        setSelectedJob(updatedJob);
+      }
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || 'Failed to claim job';
+      const errorMessage = err.response?.data?.detail || 'Failed to submit bid';
       toast.error('Error: ' + errorMessage);
-      console.error('Claim job error:', err);
+      console.error('Submit bid error:', err);
+    }
+  };
+
+  // Handle bid acceptance (for clients)
+  const handleAcceptBid = async (bidId) => {
+    try {
+      await jobBidsAPI.acceptBid(bidId);
+      toast.success('Bid accepted successfully!');
+      
+      // Refresh all data
+      const [jobsResponse, bidsResponse] = await Promise.all([
+        cleaningJobsAPI.getAll(),
+        jobBidsAPI.getAll()
+      ]);
+      
+      const jobsData = jobsResponse.results || jobsResponse || [];
+      const bidsData = bidsResponse.results || bidsResponse || [];
+      
+      setJobs(jobsData);
+      setBids(bidsData);
+      
+      // Update the selected job with the refreshed data
+      if (selectedJob) {
+        const updatedJob = jobsData.find(job => job.id === selectedJob.id);
+        if (updatedJob) {
+          setSelectedJob(updatedJob);
+        }
+      }
+      
+      setShowJobModal(false);
+      
+      // Trigger workflow modal for confirmation with photos
+      setTimeout(() => {
+        handleWorkflowAction('confirm');
+      }, 500);
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || 'Failed to accept bid';
+      toast.error('Error: ' + errorMessage);
+      console.error('Accept bid error:', err);
+    }
+  };
+
+  // Handle bid withdrawal (for cleaners)
+  const handleWithdrawBid = async (bidId) => {
+    try {
+      await jobBidsAPI.withdrawBid(bidId);
+      toast.success('Bid withdrawn successfully!');
+      
+      // Refresh all data
+      const [jobsResponse, bidsResponse] = await Promise.all([
+        cleaningJobsAPI.getAll(),
+        jobBidsAPI.getAll()
+      ]);
+      
+      const jobsData = jobsResponse.results || jobsResponse || [];
+      const bidsData = bidsResponse.results || bidsResponse || [];
+      
+      setJobs(jobsData);
+      setBids(bidsData);
+      
+      // Update the selected job with the refreshed data
+      if (selectedJob) {
+        const updatedJob = jobsData.find(job => job.id === selectedJob.id);
+        if (updatedJob) {
+          setSelectedJob(updatedJob);
+        }
+      }
+    } catch (err) {
+      const errorMessage = err.response?.data?.detail || 'Failed to withdraw bid';
+      toast.error('Error: ' + errorMessage);
+      console.error('Withdraw bid error:', err);
     }
   };
 
@@ -231,20 +434,26 @@ const CleaningJobsPool = () => {
   };
 
   // Convert jobs to calendar events
-  const calendarEvents = jobs.map(job => ({
-    id: job.id,
-    title: `${job.status} - ${job.property?.address_line1 || 'Property'} (${job.service_type?.name || 'Cleaning'})`,
-    start: job.scheduled_date,
-    end: job.scheduled_date,
-    backgroundColor: getStatusColor(job.status),
-    borderColor: getStatusColor(job.status),
-    extendedProps: job
-  }));
+  const calendarEvents = jobs.map(job => {
+    // Get bids for this job
+    const jobBids = bids.filter(bid => bid.job === job.id);
+    const bidInfo = jobBids.length > 0 ? ` (${jobBids.length} bids)` : '';
+    
+    return {
+      id: job.id,
+      title: `${job.status} - ${job.property?.address || job.property?.address_line1 || 'Property'} - $${job.client_budget}${bidInfo}`,
+      start: job.scheduled_date,
+      end: job.scheduled_date,
+      backgroundColor: getStatusColor(job.status),
+      borderColor: getStatusColor(job.status),
+      extendedProps: { ...job, bids: jobBids }
+    };
+  });
 
   // Get color based on job status
   function getStatusColor(status) {
     switch (status) {
-      case 'pending': return '#f59e0b'; // yellow
+      case 'open_for_bids': return '#f59e0b'; // yellow
       case 'confirmed': return '#3b82f6'; // blue
       case 'in_progress': return '#8b5cf6'; // purple
       case 'completed': return '#10b981'; // green
@@ -320,6 +529,16 @@ const CleaningJobsPool = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Location Filter - For Cleaners Only */}
+        {user?.role === 'cleaner' && (
+          <div className="mb-6">
+            <LocationFilter
+              onFilterChange={handleLocationFilterChange}
+              currentFilter={locationFilter}
+            />
+          </div>
+        )}
+
         {/* Loading State */}
         {loading && (
           <div className="flex justify-center items-center py-12">
@@ -454,25 +673,35 @@ const CleaningJobsPool = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Services Requested
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Services Description
                   </label>
-                  <div className="space-y-2">
-                    {serviceTypes.map(service => (
-                      <label key={service.id} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          value={service.id}
-                          checked={formData.services_requested.includes(service.id)}
-                          onChange={handleServicesChange}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">
-                          {service.name} - ${service.base_price}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <textarea
+                    name="services_description"
+                    value={formData.services_description}
+                    onChange={handleInputChange}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Describe the cleaning services you need..."
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Budget ($)
+                  </label>
+                  <input
+                    type="number"
+                    name="client_budget"
+                    value={formData.client_budget}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter your budget for this job"
+                    required
+                  />
                 </div>
 
                 <div>
@@ -524,21 +753,7 @@ const CleaningJobsPool = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Discount Applied ($)
-                  </label>
-                  <input
-                    type="number"
-                    name="discount_applied"
-                    value={formData.discount_applied}
-                    onChange={handleInputChange}
-                    min="0"
-                    step="0.01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0.00"
-                  />
-                </div>
+
 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -564,7 +779,7 @@ const CleaningJobsPool = () => {
       {/* Job Details Modal */}
       {showJobModal && selectedJob && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
@@ -578,11 +793,11 @@ const CleaningJobsPool = () => {
                 </button>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
                   <span className="font-medium text-gray-700">Property:</span>
                   <span className="ml-2">
-                    {selectedJob.property?.address_line1 || 'Unknown Address'}
+                    {selectedJob.property?.address || selectedJob.property?.address_line1 || 'Unknown Address'}
                     {selectedJob.property?.city && `, ${selectedJob.property.city}`}
                   </span>
                 </div>
@@ -593,9 +808,10 @@ const CleaningJobsPool = () => {
                     selectedJob.status === 'completed' ? 'bg-green-100 text-green-800' :
                     selectedJob.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
                     selectedJob.status === 'confirmed' ? 'bg-yellow-100 text-yellow-800' :
+                    selectedJob.status === 'open_for_bids' ? 'bg-orange-100 text-orange-800' :
                     'bg-gray-100 text-gray-800'
                   }`}>
-                    {selectedJob.status}
+                    {selectedJob.status?.replace('_', ' ')}
                   </span>
                 </div>
                 
@@ -604,58 +820,279 @@ const CleaningJobsPool = () => {
                   <span className="ml-2">{selectedJob.scheduled_date}</span>
                 </div>
                 
+                {selectedJob.start_time && (
+                  <div>
+                    <span className="font-medium text-gray-700">Start Time:</span>
+                    <span className="ml-2">{selectedJob.start_time}</span>
+                  </div>
+                )}
+                
+                {/* Show timing information for cleaners */}
+                {user?.role === 'cleaner' && selectedJob.status === 'confirmed' && selectedJob.cleaner?.id === user.id && selectedJob.scheduled_date && selectedJob.start_time && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="text-sm text-blue-800">
+                      <div className="font-medium mb-1">Job Start Window:</div>
+                      <div>• Can start: 30 minutes before scheduled time</div>
+                      <div>• Must start: Within 2 hours of scheduled time</div>
+                      {(() => {
+                        const scheduledDateTime = new Date(`${selectedJob.scheduled_date}T${selectedJob.start_time}`);
+                        const now = new Date();
+                        const earliestStart = new Date(scheduledDateTime.getTime() - 30 * 60 * 1000);
+                        const latestStart = new Date(scheduledDateTime.getTime() + 2 * 60 * 60 * 1000);
+                        
+                        if (now < earliestStart) {
+                          const minutesUntil = Math.ceil((earliestStart - now) / (1000 * 60));
+                          return <div className="text-orange-600 font-medium mt-1">⏰ Can start in {minutesUntil} minutes</div>;
+                        } else if (now >= earliestStart && now <= latestStart) {
+                          return <div className="text-green-600 font-medium mt-1">✅ Ready to start now!</div>;
+                        } else {
+                          return <div className="text-red-600 font-medium mt-1">❌ Start window expired</div>;
+                        }
+                      })()}
+                    </div>
+                  </div>
+                )}
+                
                 <div>
-                  <span className="font-medium text-gray-700">Duration:</span>
-                  <span className="ml-2">{selectedJob.estimated_duration} minutes</span>
+                  <span className="font-medium text-gray-700">Services Needed:</span>
+                  <p className="mt-1 text-gray-600">{selectedJob.services_description}</p>
                 </div>
                 
-                {selectedJob.special_instructions && (
+                <div>
+                  <span className="font-medium text-gray-700">Client Budget:</span>
+                  <span className="ml-2 text-lg font-semibold text-green-600">${selectedJob.client_budget}</span>
+                </div>
+                
+                {selectedJob.final_price && (
                   <div>
-                    <span className="font-medium text-gray-700">Instructions:</span>
-                    <p className="mt-1 text-gray-600">{selectedJob.special_instructions}</p>
+                    <span className="font-medium text-gray-700">Final Price:</span>
+                    <span className="ml-2 text-lg font-semibold text-blue-600">${selectedJob.final_price}</span>
+                  </div>
+                )}
+                
+                {selectedJob.notes && (
+                  <div>
+                    <span className="font-medium text-gray-700">Special Instructions:</span>
+                    <p className="mt-1 text-gray-600">{selectedJob.notes}</p>
+                  </div>
+                )}
+
+                {/* Show current bids */}
+                {selectedJob.bids && selectedJob.bids.length > 0 && (
+                  <div>
+                    <h3 className="font-medium text-gray-700 mb-2">Current Bids ({selectedJob.bids.length})</h3>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {selectedJob.bids.map((bid) => (
+                        <div key={bid.id} className={`p-3 border rounded-lg ${
+                          bid.status === 'accepted' ? 'border-green-300 bg-green-50' : 'border-gray-200'
+                        }`}>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium text-gray-900">${bid.bid_amount}</p>
+                              <p className="text-sm text-gray-600">
+                                {bid.cleaner?.first_name || bid.cleaner?.username || 'Unknown'} • {bid.estimated_duration} min
+                              </p>
+                              {bid.message && (
+                                <p className="text-sm text-gray-700 mt-1">{bid.message}</p>
+                              )}
+                            </div>
+                            <div className="flex space-x-2">
+                              {user?.role === 'client' && selectedJob.status === 'open_for_bids' && bid.status === 'pending' && (
+                                <button
+                                  onClick={() => handleAcceptBid(bid.id)}
+                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                >
+                                  Accept
+                                </button>
+                              )}
+                              {user?.role === 'cleaner' && bid.cleaner?.id === user.id && bid.status === 'pending' && (
+                                <button
+                                  onClick={() => handleWithdrawBid(bid.id)}
+                                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                >
+                                  Withdraw
+                                </button>
+                              )}
+                              {bid.status === 'accepted' && (
+                                <span className="text-green-600 text-sm font-medium">Accepted</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bid submission for cleaners */}
+                {user?.role === 'cleaner' && selectedJob.status === 'open_for_bids' && (
+                  <div>
+                    {/* Check if cleaner has already bid */}
+                    {selectedJob.bids?.some(bid => bid.cleaner?.id === user.id) ? (
+                      <div>
+                        <h3 className="font-medium text-gray-700 mb-2">Your Bid</h3>
+                        <p className="text-sm text-gray-600">You have already submitted a bid for this job. You can withdraw it from the bids list above.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <h3 className="font-medium text-gray-700 mb-2">Submit Your Bid</h3>
+                        <button
+                          onClick={() => setShowBidModal(true)}
+                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded font-medium transition-colors"
+                        >
+                          Place Bid
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Workflow Action Buttons for Cleaners */}
+                {user?.role === 'cleaner' && selectedJob.status !== 'completed' && selectedJob.status !== 'open_for_bids' && selectedJob.cleaner?.id === user.id && (
+                  <div className="space-y-2">
+                    <h3 className="font-medium text-gray-700">Job Actions:</h3>
+                    <div className="flex gap-2">
+                      {selectedJob.status === 'confirmed' && (
+                        (() => {
+                          const canStartNow = selectedJob.scheduled_date && selectedJob.start_time ? (() => {
+                            const scheduledDateTime = new Date(`${selectedJob.scheduled_date}T${selectedJob.start_time}`);
+                            const now = new Date();
+                            const earliestStart = new Date(scheduledDateTime.getTime() - 30 * 60 * 1000);
+                            const latestStart = new Date(scheduledDateTime.getTime() + 2 * 60 * 60 * 1000);
+                            return now >= earliestStart && now <= latestStart;
+                          })() : true;
+                          
+                          return (
+                            <button
+                              onClick={() => handleWorkflowAction('start')}
+                              disabled={!canStartNow}
+                              className={`px-4 py-2 rounded text-sm transition-colors ${
+                                canStartNow 
+                                  ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                              title={!canStartNow ? 'Job can only be started within the allowed time window' : 'Start the job with before photos'}
+                            >
+                              Start Job
+                            </button>
+                          );
+                        })()
+                      )}
+                      {selectedJob.status === 'in_progress' && (
+                        <button
+                          onClick={() => handleWorkflowAction('finish')}
+                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm transition-colors"
+                        >
+                          Complete Job
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Claim Job Button for Cleaners (available jobs) */}
-              {user?.role === 'cleaner' && selectedJob.status === 'pending' && !selectedJob.assigned_cleaner && (
-                <div className="mt-6">
-                  <button
-                    onClick={() => handleClaimJob(selectedJob.id)}
-                    className="w-full bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded font-medium transition-colors"
-                  >
-                    Claim This Job
-                  </button>
-                </div>
-              )}
-
-              {/* Status Update Buttons for Cleaners */}
-              {user?.role === 'cleaner' && selectedJob.status !== 'completed' && selectedJob.status !== 'cancelled' && selectedJob.assigned_cleaner === user.id && (
-                <div className="mt-6 space-y-2">
-                  <h3 className="font-medium text-gray-700">Update Status:</h3>
-                  <div className="flex gap-2">
-                    {selectedJob.status === 'confirmed' && (
-                      <button
-                        onClick={() => handleStatusUpdate(selectedJob.id, 'in_progress')}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                      >
-                        Start Job
-                      </button>
-                    )}
-                    {selectedJob.status === 'in_progress' && (
-                      <button
-                        onClick={() => handleStatusUpdate(selectedJob.id, 'completed')}
-                        className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                      >
-                        Complete Job
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Bid Submission Modal */}
+      {showBidModal && selectedJob && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Submit Bid</h2>
+                <button
+                  onClick={() => setShowBidModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={(e) => handleSubmitBid(e, selectedJob.id)} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Your Bid Amount ($)
+                  </label>
+                  <input
+                    type="number"
+                    name="bid_amount"
+                    value={bidFormData.bid_amount}
+                    onChange={handleBidInputChange}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter your bid"
+                    required
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Client budget: ${selectedJob.client_budget}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Estimated Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    name="estimated_duration"
+                    value={bidFormData.estimated_duration}
+                    onChange={handleBidInputChange}
+                    min="30"
+                    max="480"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Message to Client
+                  </label>
+                  <textarea
+                    name="message"
+                    value={bidFormData.message}
+                    onChange={handleBidInputChange}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Explain your approach, experience, or why you're the best choice..."
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md transition-colors"
+                  >
+                    Submit Bid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBidModal(false)}
+                    className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 py-2 px-4 rounded-md transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Job Workflow Modal */}
+      {showWorkflowModal && selectedJob && (
+        <JobWorkflowModal
+          isOpen={showWorkflowModal}
+          job={selectedJob}
+          action={workflowAction}
+          onJobUpdated={handleJobUpdated}
+          onClose={closeWorkflowModal}
+        />
       )}
     </div>
   );

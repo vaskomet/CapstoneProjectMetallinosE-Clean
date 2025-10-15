@@ -44,7 +44,7 @@ const PropertiesDashboard = () => {
 
     try {
       const response = await propertiesAPI.getAll();
-      setProperties(response.data.results || response.data || []);
+      setProperties(response.results || response || []);
     } catch (err) {
       setError('Failed to fetch properties. Please try again later.');
       console.error('Fetch properties error:', err);

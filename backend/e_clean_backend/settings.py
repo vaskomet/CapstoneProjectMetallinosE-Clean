@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'users',
     'properties',
     'cleaning_jobs',
+    'job_lifecycle',  # Enhanced job management with photos, notifications, and workflow tracking
 ]
 
 MIDDLEWARE = [
@@ -139,9 +140,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
-# Custom authentication backend for email login
+# Custom authentication backend for email and username login
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailBackend',
+    'users.backends.EmailUsernameBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
 

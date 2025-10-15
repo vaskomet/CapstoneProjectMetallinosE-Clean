@@ -34,8 +34,12 @@ urlpatterns = [
     # Supports CleaningJob CRUD operations with JWT authentication and role-based permissions
     # Endpoints: list/create jobs, job details management, cleaner status updates
     path('api/jobs/', include('cleaning_jobs.urls')),
+    
+    # Enhanced job lifecycle management with photos, notifications, and workflow tracking
+    # Endpoints: photo uploads, workflow actions (confirm/start/finish), notifications
+    path('api/lifecycle/', include('job_lifecycle.urls')),
 
-    # Placeholder for future app URLs (payments, reviews, notifications)
+    # Placeholder for future app URLs (payments, reviews)
     # path('api/payments/', include('payments.urls')),
     # path('api/reviews/', include('reviews.urls')),
 ]
