@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # WebSocket support - must be first
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,10 +41,13 @@ INSTALLED_APPS = [
     # 'django.contrib.gis',  # Temporarily disabled - will be re-enabled with PostGIS setup
     'rest_framework',
     'corsheaders',
+    'channels',  # WebSocket support
     'users',
     'properties',
     'cleaning_jobs',
     'job_lifecycle',  # Enhanced job management with photos, notifications, and workflow tracking
+    'chat',  # Real-time chat functionality
+    'notifications',  # Real-time notifications
 ]
 
 MIDDLEWARE = [
@@ -87,12 +91,27 @@ WSGI_APPLICATION = 'e_clean_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+import os
+
+# Use PostgreSQL if environment variables are set (Docker), otherwise SQLite
+if os.environ.get('POSTGRES_DB'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB'),
+            'USER': os.environ.get('POSTGRES_USER'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -130,6 +149,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Media files (user uploads)
+MEDIA_URL = 'media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -164,3 +188,22 @@ SIMPLE_JWT = {
     'VERIFYING_KEY': None,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# ===========================
+# Django Channels Configuration
+# ===========================
+
+ASGI_APPLICATION = 'e_clean_backend.asgi.application'
+
+# Channel Layers Configuration for Redis
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.environ.get('REDIS_URL', 'redis://localhost:6379/0')],
+        },
+    },
+}
+
+# WebSocket Settings
+WEBSOCKET_ACCEPT_ALL = True  # For development only

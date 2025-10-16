@@ -38,6 +38,14 @@ urlpatterns = [
     # Enhanced job lifecycle management with photos, notifications, and workflow tracking
     # Endpoints: photo uploads, workflow actions (confirm/start/finish), notifications
     path('api/lifecycle/', include('job_lifecycle.urls')),
+    
+    # Real-time chat functionality
+    # Endpoints: chat rooms, messages, participants
+    path('', include('chat.urls')),
+    
+    # Real-time notifications
+    # Endpoints: notifications, preferences, bulk sending
+    path('', include('notifications.urls')),
 
     # Placeholder for future app URLs (payments, reviews)
     # path('api/payments/', include('payments.urls')),

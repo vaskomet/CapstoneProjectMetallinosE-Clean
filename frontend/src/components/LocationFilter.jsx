@@ -6,6 +6,7 @@ import { serviceAreasAPI } from '../services/api';
  * Allows cleaners to filter jobs by their service areas or distance ranges
  */
 const LocationFilter = ({ onFilterChange, currentFilter }) => {
+  console.log('🐳 LocationFilter running in Docker! Live sync works!');
   const [serviceAreas, setServiceAreas] = useState([]);
   const [filterType, setFilterType] = useState(currentFilter?.type || 'all');
   const [selectedArea, setSelectedArea] = useState(currentFilter?.areaId || '');
