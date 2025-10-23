@@ -2,8 +2,10 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { UserProvider } from './contexts/UserContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { WebSocketProvider } from './contexts/WebSocketContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navigation from './components/Navigation';
+import NotificationToast from './components/notifications/NotificationToast';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/Dashboard';
@@ -20,22 +22,24 @@ function App() {
   return (
     <UserProvider>
       <ToastProvider>
-        <Router>
-          <div className="App min-h-screen flex flex-col">
-            <Navigation />
-            <main className="flex-1">
-              <Routes>
-                <Route path="/login" element={<LoginForm />} />
-                <Route path="/register" element={<RegisterForm />} />
-                <Route 
-                  path="/dashboard" 
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
+        <WebSocketProvider>
+          <Router>
+            <div className="App min-h-screen flex flex-col">
+              <Navigation />
+              <NotificationToast />
+              <main className="flex-1">
+                <Routes>
+                  <Route path="/login" element={<LoginForm />} />
+                  <Route path="/register" element={<RegisterForm />} />
+                  <Route 
+                    path="/dashboard" 
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
                   path="/properties" 
                   element={
                     <ProtectedRoute>
@@ -72,6 +76,7 @@ function App() {
             </main>
           </div>
         </Router>
+        </WebSocketProvider>
       </ToastProvider>
     </UserProvider>
   );

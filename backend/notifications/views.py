@@ -8,7 +8,7 @@ from .serializers import (
     NotificationSerializer, NotificationPreferenceSerializer,
     CreateNotificationSerializer, BulkNotificationSerializer
 )
-from .consumers import create_and_send_notification
+from .utils import create_and_send_notification
 
 
 class NotificationViewSet(viewsets.ModelViewSet):

@@ -20,14 +20,15 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'e_clean_backend.settings')
 django_asgi_app = get_asgi_application()
 
 from e_clean_backend import routing
+from e_clean_backend.middleware import JWTAuthMiddlewareStack
 
 application = ProtocolTypeRouter({
     # Django's ASGI application to handle traditional HTTP requests
     'http': django_asgi_app,
     
-    # WebSocket chat handler
+    # WebSocket chat handler with JWT authentication
     'websocket': AllowedHostsOriginValidator(
-        AuthMiddlewareStack(
+        JWTAuthMiddlewareStack(
             URLRouter(routing.websocket_urlpatterns)
         )
     ),

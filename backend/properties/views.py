@@ -15,6 +15,12 @@ class PropertyListCreateView(generics.ListCreateAPIView):
     serializer_class = PropertySerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        """
+        Filter properties to only show those owned by the authenticated user.
+        """
+        return Property.objects.filter(owner=self.request.user)
+
     def perform_create(self, serializer):
         """
         Perform_create ensures property ownership for client role.

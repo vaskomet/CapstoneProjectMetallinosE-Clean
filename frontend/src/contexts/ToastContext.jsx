@@ -1,12 +1,83 @@
 /**
- * Toast notification context for global error and success messages
+ * Toast Notification Context
+ *
+ * React context for managing global toast notifications throughout the E-Cleaner platform.
+ * Provides a centralized system for displaying success, error, warning, and info messages
+ * with automatic dismissal and smooth animations.
+ *
+ * @module ToastContext
+ *
+ * @features
+ * - Multiple toast types (success, error, warning, info)
+ * - Automatic dismissal with configurable duration
+ * - Smooth slide-in animations with staggered timing
+ * - Global access via window.globalToast for API services
+ * - TypeScript-like prop validation with JSDoc
+ * - Accessible close buttons and ARIA labels
+ *
+ * @dependencies
+ * - React: Core React hooks (useState, useEffect, useContext)
+ * - Tailwind CSS: Utility classes for styling and animations
+ * - Heroicons: SVG icons for different toast types
+ *
+ * @example
+ * ```jsx
+ * import { ToastProvider, useToast } from './contexts/ToastContext';
+ *
+ * // Wrap your app with the provider
+ * function App() {
+ *   return (
+ *     <ToastProvider>
+ *       <YourAppComponents />
+ *     </ToastProvider>
+ *   );
+ * }
+ *
+ * // Use the hook in components
+ * function MyComponent() {
+ *   const toast = useToast();
+ *
+ *   const handleSuccess = () => {
+ *     toast.success('Operation completed successfully!');
+ *   };
+ *
+ *   const handleError = () => {
+ *     toast.error('Something went wrong!', 10000); // 10 second duration
+ *   };
+ *
+ *   return <button onClick={handleSuccess}>Complete Action</button>;
+ * }
+ * ```
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const ToastContext = createContext();
 
-// Toast component for individual toast messages
+/**
+ * Individual Toast Component
+ *
+ * Renders a single toast notification with appropriate styling, icon, and close button.
+ * Supports different types (success, error, warning, info) with distinct visual styling.
+ *
+ * @component
+ * @param {Object} props - Component props
+ * @param {Object} props.toast - Toast notification object
+ * @param {number} props.toast.id - Unique identifier for the toast
+ * @param {string} props.toast.message - Message text to display
+ * @param {string} props.toast.type - Toast type ('success' | 'error' | 'warning' | 'info')
+ * @param {number} props.toast.duration - Auto-dismiss duration in milliseconds
+ * @param {Function} props.onRemove - Callback function to remove the toast
+ * @returns {JSX.Element} Rendered toast notification
+ *
+ * @example
+ * ```jsx
+ * <Toast
+ *   toast={{ id: 1, message: 'Success!', type: 'success', duration: 5000 }}
+ *   onRemove={(id) => console.log('Remove toast', id)}
+ * />
+ * ```
+ */
 const Toast = ({ toast, onRemove }) => {
   const getToastStyles = (type) => {
     const baseStyles = "p-4 rounded-lg shadow-lg transform transition-all duration-300 ease-in-out border-l-4";
@@ -80,6 +151,29 @@ const Toast = ({ toast, onRemove }) => {
 };
 
 // Toast container component
+/**
+ * Toast Container Component
+ *
+ * Container component that renders all active toast notifications in a fixed position.
+ * Manages the layout and animation timing for multiple toasts with staggered slide-in effects.
+ *
+ * @component
+ * @param {Object} props - Component props
+ * @param {Array} props.toasts - Array of active toast objects
+ * @param {Function} props.onRemove - Callback to remove a specific toast by ID
+ * @returns {JSX.Element|null} Toast container or null if no toasts
+ *
+ * @example
+ * ```jsx
+ * <ToastContainer
+ *   toasts={[
+ *     { id: 1, message: 'Success!', type: 'success' },
+ *     { id: 2, message: 'Error occurred', type: 'error' }
+ *   ]}
+ *   onRemove={(id) => removeToast(id)}
+ * />
+ * ```
+ */
 const ToastContainer = ({ toasts, onRemove }) => {
   if (toasts.length === 0) return null;
 
@@ -101,6 +195,25 @@ const ToastContainer = ({ toasts, onRemove }) => {
 };
 
 // Provider component
+/**
+ * Toast Provider Component
+ *
+ * React context provider that manages the global toast notification state.
+ * Provides toast methods to child components and renders the toast container.
+ * Also sets up a global window reference for API service access.
+ *
+ * @component
+ * @param {Object} props - Component props
+ * @param {React.ReactNode} props.children - Child components to render
+ * @returns {JSX.Element} Provider component with toast container
+ *
+ * @example
+ * ```jsx
+ * <ToastProvider>
+ *   <App />
+ * </ToastProvider>
+ * ```
+ */
 const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
   
@@ -145,6 +258,33 @@ const ToastProvider = ({ children }) => {
 };
 
 // Hook for using toast context
+/**
+ * useToast Hook
+ *
+ * Custom React hook for accessing toast notification methods.
+ * Must be used within a ToastProvider component.
+ *
+ * @returns {Object} Toast methods interface
+ * @property {Function} success - Show success toast message
+ * @property {Function} error - Show error toast message
+ * @property {Function} warning - Show warning toast message
+ * @property {Function} info - Show info toast message
+ * @throws {Error} If used outside of ToastProvider
+ *
+ * @example
+ * ```javascript
+ * const toast = useToast();
+ *
+ * // Show different types of toasts
+ * toast.success('Operation completed!');
+ * toast.error('Something went wrong!');
+ * toast.warning('Please check your input');
+ * toast.info('New feature available');
+ *
+ * // Custom duration (0 = no auto-dismiss)
+ * toast.success('Important message', 0);
+ * ```
+ */
 const useToast = () => {
   const context = useContext(ToastContext);
   if (!context) {

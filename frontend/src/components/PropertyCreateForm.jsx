@@ -357,7 +357,6 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         }
       }
 
-      console.log('Sending property data:', propertyData);
       await propertiesAPI.create(propertyData);
       toast.success('Property created successfully!');
       

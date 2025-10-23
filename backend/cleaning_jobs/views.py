@@ -604,7 +604,7 @@ class AcceptBidView(generics.UpdateAPIView):
             job.cleaner = bid.cleaner
             job.accepted_bid = bid
             job.final_price = bid.bid_amount
-            job.status = 'confirmed'
+            job.status = 'bid_accepted'  # Changed from 'confirmed' to 'bid_accepted'
             job.save()
             
             # Reject all other bids

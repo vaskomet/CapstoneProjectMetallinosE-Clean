@@ -13,61 +13,141 @@ import 'react-toastify/dist/ReactToastify.css';
 
 /**
  * CleaningJobsPool Component
- * 
- * Fetches client jobs or cleaner assignments, uses FullCalendar.js for scheduling, follows PascalCase per DEVELOPMENT_STANDARDS.md.
- * API calls use Authorization header with Bearer token as in auth integrations.
- * 
- * Features:
- * - Calendar view with FullCalendar.js for job scheduling
- * - Role-based job management (client bookings vs cleaner assignments)
- * - Job creation modal with form validation
- * - Status updates for cleaners
- * - Toast notifications for user feedback
- * 
- * Test with token from login, check calendar rendering, verify status update for cleaners.
+ *
+ * A comprehensive job management interface that serves as the central hub for both clients and cleaners
+ * in the E-Cleaner platform. This component provides role-based functionality for job creation,
+ * bidding, assignment, and workflow management using an integrated calendar view.
+ *
+ * @component
+ * @requires React, FullCalendar.js
+ * @requires Authentication (redirects to login if not authenticated)
+ *
+ * @features
+ * - **Role-Based Interface**: Different functionality for clients vs cleaners
+ * - **Calendar Integration**: FullCalendar.js for visual job scheduling and management
+ * - **Job Creation**: Clients can create new cleaning service requests
+ * - **Bidding System**: Cleaners can submit competitive bids on open jobs
+ * - **Workflow Management**: Photo-documented job lifecycle (confirm → start → complete)
+ * - **Location Filtering**: Cleaners can filter jobs by service areas or distance
+ * - **Real-time Updates**: Automatic refresh of job status and bid information
+ * - **Responsive Design**: Mobile-friendly interface with adaptive layouts
+ *
+ * @dependencies
+ * - FullCalendar.js plugins: dayGridPlugin, timeGridPlugin, listPlugin
+ * - React Router: useNavigate for authentication redirects
+ * - Toast notifications: react-toastify for user feedback
+ * - Context providers: UserContext for authentication state
+ * - API services: cleaningJobsAPI, propertiesAPI, jobBidsAPI
+ * - Child components: LocationFilter, JobWorkflowModal
+ *
+ * @api
+ * - GET /api/cleaning-jobs/ - Fetch jobs with optional filtering
+ * - POST /api/cleaning-jobs/ - Create new job (clients only)
+ * - PATCH /api/cleaning-jobs/{id}/status/ - Update job status
+ * - GET /api/properties/ - Fetch user properties (clients only)
+ * - GET /api/service-types/ - Fetch available service types
+ * - GET/POST /api/job-bids/ - Bid management for competitive pricing
+ *
+ * @state
+ * - jobs: Array of job objects with full details and relationships
+ * - properties: User's properties (clients only)
+ * - bids: All job bids for bid display and management
+ * - locationFilter: Geographic filtering for cleaners
+ * - formData: Job creation form state
+ * - bidFormData: Bid submission form state
+ * - UI states: loading, error, modal visibility flags
+ *
+ * @workflow
+ * 1. **Authentication Check**: Redirect to login if not authenticated
+ * 2. **Data Loading**: Fetch jobs, properties, bids, and service types
+ * 3. **Role Determination**: Render appropriate interface based on user role
+ * 4. **Calendar Rendering**: Convert jobs to calendar events with status colors
+ * 5. **Interaction Handling**: Event clicks open detailed job modals
+ * 6. **Action Processing**: Handle bids, status updates, and workflow actions
+ *
+ * @permissions
+ * - **Clients**: Create jobs, view bids, accept bids, track job progress
+ * - **Cleaners**: View available jobs, submit bids, manage assignments, update status
+ *
+ * @errorHandling
+ * - Network errors with retry logic and user-friendly messages
+ * - Form validation with specific field error highlighting
+ * - API error responses with toast notifications
+ * - Loading states to prevent multiple simultaneous requests
+ *
+ * @styling
+ * - Tailwind CSS for responsive design
+ * - Status-based color coding for jobs and calendar events
+ * - Gradient backgrounds and shadow effects for visual hierarchy
+ * - Mobile-first approach with adaptive grid layouts
+ *
+ * @testing
+ * - Authentication flow and redirects
+ * - Calendar rendering with various job states
+ * - Form submissions and validation
+ * - API error handling and recovery
+ * - Role-based UI rendering
+ * - Real-time data updates and refreshes
+ *
+ * @example
+ * ```jsx
+ * import CleaningJobsPool from './components/CleaningJobsPool';
+ *
+ * function App() {
+ *   return (
+ *     <UserProvider>
+ *       <CleaningJobsPool />
+ *     </UserProvider>
+ *   );
+ * }
+ * ```
  */
 const CleaningJobsPool = () => {
   const { user, isAuthenticated } = useUser();
   const navigate = useNavigate();
-  const [jobs, setJobs] = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [serviceTypes, setServiceTypes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJobModal, setShowJobModal] = useState(false);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [jobs, setJobs] = useState([]); // Array of all jobs visible to current user
+  const [properties, setProperties] = useState([]); // User's properties (clients only)
+  const [serviceTypes, setServiceTypes] = useState([]); // Available cleaning service types
+  const [loading, setLoading] = useState(true); // Loading state for initial data fetch
+  const [error, setError] = useState(''); // Error message for failed operations
+
+  // Modal visibility states
+  const [showCreateModal, setShowCreateModal] = useState(false); // Job creation modal
+  const [showJobModal, setShowJobModal] = useState(false); // Job details modal
+  const [selectedJob, setSelectedJob] = useState(null); // Currently selected job for modals
+
+  // Job creation form state
   const [formData, setFormData] = useState({
-    property: '',
-    scheduled_date: '',
-    start_time: '',
-    end_time: '',
-    services_description: '',
-    client_budget: '',
-    checklist: [],
-    notes: '',
-    estimated_duration: 60
+    property: '', // Selected property ID
+    scheduled_date: '', // Job date (YYYY-MM-DD)
+    start_time: '', // Job start time (HH:MM)
+    end_time: '', // Job end time (HH:MM)
+    services_description: '', // Description of required services
+    client_budget: '', // Client's budget for the job
+    checklist: [], // Array of checklist items
+    notes: '', // Additional notes
+    estimated_duration: 60 // Estimated duration in minutes
   });
-  
-  // Bidding related states
-  const [bids, setBids] = useState([]);
-  const [showBidModal, setShowBidModal] = useState(false);
+
+  // Bidding related states (for cleaners)
+  const [bids, setBids] = useState([]); // All bids across all jobs
+  const [showBidModal, setShowBidModal] = useState(false); // Bid submission modal
   const [bidFormData, setBidFormData] = useState({
-    bid_amount: '',
-    estimated_duration: 60,
-    message: ''
+    bid_amount: '', // Cleaner's bid amount
+    estimated_duration: 60, // Cleaner's estimated duration
+    message: '' // Message to client explaining the bid
   });
 
   // Location filter state (for cleaners)
   const [locationFilter, setLocationFilter] = useState({
-    type: 'all',
-    areaId: '',
-    distance: '5'
+    type: 'all', // Filter type: 'all', 'myAreas', 'distance'
+    areaId: '', // Selected service area ID
+    distance: '5' // Distance in km for proximity filtering
   });
 
   // Job workflow modal states
-  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
-  const [workflowAction, setWorkflowAction] = useState(null); // 'confirm', 'start', 'finish'
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false); // Workflow modal visibility
+  const [workflowAction, setWorkflowAction] = useState(null); // Current workflow action: 'confirm', 'start', 'finish'
 
   // Ref to prevent multiple simultaneous fetch calls
   const fetchingRef = useRef(false);
@@ -80,10 +160,14 @@ const CleaningJobsPool = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Fetch jobs from API
+  /**
+   * Fetches all jobs visible to the current user
+   * Applies location filtering for cleaners
+   * Includes bid information for job display
+   */
   const fetchJobs = async () => {
     if (fetchingRef.current) return; // Prevent multiple simultaneous calls
-    
+
     fetchingRef.current = true;
     setLoading(true);
     setError('');
@@ -112,10 +196,13 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Fetch user properties (for clients only)
+  /**
+   * Fetches user properties for job creation (clients only)
+   * Required before clients can create new cleaning jobs
+   */
   const fetchProperties = async () => {
     if (user?.role !== 'client') return;
-    
+
     try {
       const response = await propertiesAPI.getAll();
       const propertiesData = response.results || response || [];
@@ -126,7 +213,10 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Fetch available service types
+  /**
+   * Fetches available service types for job creation
+   * Used to populate service type options in forms
+   */
   const fetchServiceTypes = async () => {
     try {
       const response = await propertiesAPI.getServiceTypes();
@@ -177,7 +267,10 @@ const CleaningJobsPool = () => {
     setLocationFilter(filter);
   };
 
-  // Fetch bids for jobs
+  /**
+   * Fetches all bids for job display and management
+   * Used to show bid counts and details on calendar events
+   */
   const fetchBids = async () => {
     try {
       const response = await jobBidsAPI.getAll();
@@ -234,7 +327,6 @@ const CleaningJobsPool = () => {
         property: parseInt(formData.property)
       };
       
-      console.log('Sending job data:', jobData);
       await cleaningJobsAPI.create(jobData);
       toast.success('Job created successfully!');
       setShowCreateModal(false);
@@ -259,7 +351,10 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Handle status update (for cleaners)
+  /**
+   * Handles job status updates (primarily for cleaners)
+   * Updates job status and refreshes the job list
+   */
   const handleStatusUpdate = async (jobId, newStatus) => {
     try {
       await cleaningJobsAPI.updateStatus(jobId, newStatus);
@@ -273,44 +368,61 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Handle workflow actions with photo uploads
+  /**
+   * Initiates workflow actions that require photo documentation
+   * Opens the JobWorkflowModal for confirm/start/finish actions
+   * @param {string} action - The workflow action: 'confirm', 'start', or 'finish'
+   */
   const handleWorkflowAction = (action) => {
     setWorkflowAction(action);
     setShowWorkflowModal(true);
   };
 
+  /**
+   * Callback function for when a job is updated through the workflow modal
+   * Updates the local job state and closes the modal
+   * @param {Object} updatedJob - The updated job object from the workflow
+   */
   const handleJobUpdated = (updatedJob) => {
     // Update the job in the jobs list
-    setJobs(prevJobs => 
-      prevJobs.map(job => 
+    setJobs(prevJobs =>
+      prevJobs.map(job =>
         job.id === updatedJob.id ? updatedJob : job
       )
     );
-    
+
     // Update selectedJob if it's the same job
     if (selectedJob && selectedJob.id === updatedJob.id) {
       setSelectedJob(updatedJob);
     }
-    
+
     // Close workflow modal
     setShowWorkflowModal(false);
     setWorkflowAction(null);
   };
 
+  /**
+   * Closes the workflow modal and resets the workflow action state
+   */
   const closeWorkflowModal = () => {
     setShowWorkflowModal(false);
     setWorkflowAction(null);
   };
 
-  // Handle bid submission (for cleaners)
+  /**
+   * Handles bid submission from cleaners
+   * Validates bid data and creates a new bid for the specified job
+   * @param {Event} e - Form submission event
+   * @param {number} jobId - ID of the job being bid on
+   */
   const handleSubmitBid = async (e, jobId) => {
     e.preventDefault();
-    
+
     if (!bidFormData.bid_amount) {
       toast.error('Please enter your bid amount');
       return;
     }
-    
+
     if (!bidFormData.message) {
       toast.error('Please add a message with your bid');
       return;
@@ -322,7 +434,7 @@ const CleaningJobsPool = () => {
         job: jobId,
         bid_amount: parseFloat(bidFormData.bid_amount)
       };
-      
+
       await jobBidsAPI.create(bidData);
       toast.success('Bid submitted successfully!');
       setShowBidModal(false);
@@ -331,19 +443,19 @@ const CleaningJobsPool = () => {
         estimated_duration: 60,
         message: ''
       });
-      
+
       // Refresh all data
       const [jobsResponse, bidsResponse] = await Promise.all([
         cleaningJobsAPI.getAll(),
         jobBidsAPI.getAll()
       ]);
-      
+
       const jobsData = jobsResponse.results || jobsResponse || [];
       const bidsData = bidsResponse.results || bidsResponse || [];
-      
+
       setJobs(jobsData);
       setBids(bidsData);
-      
+
       // Update the selected job with the refreshed data
       const updatedJob = jobsData.find(job => job.id === jobId);
       if (updatedJob) {
@@ -356,24 +468,28 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Handle bid acceptance (for clients)
+  /**
+   * Handles bid acceptance by clients
+   * Accepts a specific bid and updates job status to confirmed
+   * @param {number} bidId - ID of the bid to accept
+   */
   const handleAcceptBid = async (bidId) => {
     try {
       await jobBidsAPI.acceptBid(bidId);
       toast.success('Bid accepted successfully!');
-      
+
       // Refresh all data
       const [jobsResponse, bidsResponse] = await Promise.all([
         cleaningJobsAPI.getAll(),
         jobBidsAPI.getAll()
       ]);
-      
+
       const jobsData = jobsResponse.results || jobsResponse || [];
       const bidsData = bidsResponse.results || bidsResponse || [];
-      
+
       setJobs(jobsData);
       setBids(bidsData);
-      
+
       // Update the selected job with the refreshed data
       if (selectedJob) {
         const updatedJob = jobsData.find(job => job.id === selectedJob.id);
@@ -381,13 +497,10 @@ const CleaningJobsPool = () => {
           setSelectedJob(updatedJob);
         }
       }
-      
+
       setShowJobModal(false);
-      
-      // Trigger workflow modal for confirmation with photos
-      setTimeout(() => {
-        handleWorkflowAction('confirm');
-      }, 500);
+
+      // No need to trigger workflow modal - cleaner will confirm the accepted bid
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'Failed to accept bid';
       toast.error('Error: ' + errorMessage);
@@ -427,18 +540,24 @@ const CleaningJobsPool = () => {
     }
   };
 
-  // Handle event click in calendar
+  /**
+   * Handles calendar event clicks to open job details modal
+   * @param {Object} clickInfo - FullCalendar click event information
+   */
   const handleEventClick = (clickInfo) => {
     setSelectedJob(clickInfo.event.extendedProps);
     setShowJobModal(true);
   };
 
-  // Convert jobs to calendar events
+  /**
+   * Converts jobs data into FullCalendar event objects
+   * Includes bid information and status-based styling
+   */
   const calendarEvents = jobs.map(job => {
     // Get bids for this job
     const jobBids = bids.filter(bid => bid.job === job.id);
     const bidInfo = jobBids.length > 0 ? ` (${jobBids.length} bids)` : '';
-    
+
     return {
       id: job.id,
       title: `${job.status} - ${job.property?.address || job.property?.address_line1 || 'Property'} - $${job.client_budget}${bidInfo}`,
@@ -450,15 +569,19 @@ const CleaningJobsPool = () => {
     };
   });
 
-  // Get color based on job status
+  /**
+   * Returns color code based on job status for calendar visualization
+   * @param {string} status - Job status
+   * @returns {string} Hex color code
+   */
   function getStatusColor(status) {
     switch (status) {
-      case 'open_for_bids': return '#f59e0b'; // yellow
-      case 'confirmed': return '#3b82f6'; // blue
-      case 'in_progress': return '#8b5cf6'; // purple
-      case 'completed': return '#10b981'; // green
-      case 'cancelled': return '#ef4444'; // red
-      default: return '#6b7280'; // gray
+      case 'open_for_bids': return '#f59e0b'; // yellow - available for bidding
+      case 'confirmed': return '#3b82f6'; // blue - accepted bid, awaiting cleaner confirmation
+      case 'in_progress': return '#8b5cf6'; // purple - job actively being worked on
+      case 'completed': return '#10b981'; // green - job finished successfully
+      case 'cancelled': return '#ef4444'; // red - job cancelled
+      default: return '#6b7280'; // gray - unknown status
     }
   }
 
@@ -468,23 +591,59 @@ const CleaningJobsPool = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header Section */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {user?.role === 'cleaner' ? 'My Assignments' : 'My Bookings'}
+      {/* Header Section - Role-based title and quick stats */}
+      <div className="bg-gradient-to-r from-white to-blue-50 shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-start">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                {user?.role === 'cleaner' ? (
+                  <>
+                    <svg className="w-8 h-8 text-green-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6m0 0a2 2 0 002 2h2m-2-2a2 2 0 00-2-2m2 2v12a2 2 0 002 2h-2a2 2 0 01-2-2V8z" />
+                    </svg>
+                    Find Jobs & Manage Work
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    My Cleaning Jobs
+                  </>
+                )}
               </h1>
-              <p className="mt-1 text-gray-600">
-                {user?.role === 'cleaner' 
-                  ? 'Manage your assigned cleaning jobs and update status'
-                  : 'Schedule and manage your cleaning appointments'
+              <p className="text-gray-600 text-lg">
+                {user?.role === 'cleaner'
+                  ? 'Browse available jobs, submit bids, and manage your accepted assignments'
+                  : 'Create new cleaning requests and track your scheduled services'
                 }
               </p>
+
+              {/* Quick Stats - Job status overview */}
+              <div className="flex items-center space-x-6 mt-4">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600">
+                    {jobs.filter(job => job.status === 'pending').length} Pending
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600">
+                    {jobs.filter(job => job.status === 'in_progress').length} In Progress
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600">
+                    {jobs.filter(job => job.status === 'completed').length} Completed
+                  </span>
+                </div>
+              </div>
             </div>
-            
-            {/* Action Buttons */}
+
+            {/* Action Buttons - Role-based primary actions */}
             <div className="flex gap-3">
               {user?.role === 'client' && (
                 <>
@@ -527,9 +686,9 @@ const CleaningJobsPool = () => {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Location Filter - For Cleaners Only */}
+        {/* Location Filter - Geographic filtering for cleaners */}
         {user?.role === 'cleaner' && (
           <div className="mb-6">
             <LocationFilter
@@ -539,7 +698,7 @@ const CleaningJobsPool = () => {
           </div>
         )}
 
-        {/* Loading State */}
+        {/* Loading State - Spinner during data fetch */}
         {loading && (
           <div className="flex justify-center items-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -547,14 +706,14 @@ const CleaningJobsPool = () => {
           </div>
         )}
 
-        {/* Error State */}
+        {/* Error State - Display API or network errors */}
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
           </div>
         )}
 
-        {/* Calendar */}
+        {/* Main Calendar View - FullCalendar.js integration */}
         {!loading && !error && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <FullCalendar

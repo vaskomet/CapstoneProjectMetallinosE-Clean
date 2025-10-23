@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'channels',  # WebSocket support
+    'core',  # Core services (events, subscribers)
     'users',
     'properties',
     'cleaning_jobs',
@@ -204,6 +205,20 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# ===========================
+# Redis Pub/Sub Configuration
+# ===========================
+
+# Redis configuration for Pub/Sub events
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+REDIS_URL = os.environ.get('REDIS_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
+
+# Event publishing settings
+EVENT_PUBLISHER_ENABLED = True
+EVENT_SUBSCRIBER_TOPICS = ['jobs', 'notifications', 'chat', 'payments']
 
 # WebSocket Settings
 WEBSOCKET_ACCEPT_ALL = True  # For development only

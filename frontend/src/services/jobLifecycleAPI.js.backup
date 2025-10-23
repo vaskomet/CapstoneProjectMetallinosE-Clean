@@ -322,3 +322,79 @@ export const jobNotificationsAPI = {
     );
   },
 };
+        const formData = new FormData();
+        formData.append('action_type', 'start_job');
+        
+        // Append photos directly as files
+        photos.forEach((photo, index) => {
+          formData.append(`photo_${index}`, photo.image);
+          formData.append(`photo_${index}_type`, photo.photo_type);
+          if (photo.description) {
+            formData.append(`photo_${index}_description`, photo.description);
+          }
+        });
+        
+        const response = await api.post(`/lifecycle/jobs/${jobId}/workflow/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return response.data;
+      },
+      {
+        loadingKey: `start_job_${jobId}`,
+        successMessage: 'Job started successfully!',
+        showSuccess: true
+      }
+    );
+  },
+
+  finishJob: async (jobId, photos = []) => {
+    return apiCall(
+      async () => {
+        const formData = new FormData();
+        formData.append('action_type', 'finish_job');
+        
+        // Append photos directly as files
+        photos.forEach((photo, index) => {
+          formData.append(`photo_${index}`, photo.image);
+          formData.append(`photo_${index}_type`, photo.photo_type);
+          if (photo.description) {
+            formData.append(`photo_${index}_description`, photo.description);
+          }
+        });
+        
+        const response = await api.post(`/lifecycle/jobs/${jobId}/workflow/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return response.data;
+      },
+      {
+        loadingKey: `finish_job_${jobId}`,
+        successMessage: 'Job completed successfully!',
+        showSuccess: true
+      }
+    );
+  },
+
+  checkStatus: async (jobId) => {
+    return apiCall(
+      async () => {
+        const response = await api.get(`/lifecycle/jobs/${jobId}/status/`);
+        return response.data;
+      },
+      {
+        loadingKey: `status_check_${jobId}`,
+        showSuccess: false
+      }
+    );
+  },
+};
+
+export default {
+  jobPhotosAPI,
+  jobWorkflowAPI,
+  jobNotificationsAPI,
+};

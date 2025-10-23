@@ -1,10 +1,23 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
-import ErrorHandlingDemo from './ErrorHandlingDemo';
+import OnboardingCard from './common/OnboardingCard';
 
 export default function Dashboard() {
   const { user } = useUser();
+
+  const getWelcomeMessage = (role) => {
+    switch(role) {
+      case 'client':
+        return 'Ready to book your next cleaning service? Let\'s get your space sparkling clean!';
+      case 'cleaner':
+        return 'Find new cleaning opportunities and manage your current assignments.';
+      case 'admin':
+        return 'Monitor platform activity and manage users efficiently.';
+      default:
+        return 'Welcome to E-Clean - your sustainable cleaning platform.';
+    }
+  };
 
   const getRoleColor = (role) => {
     switch(role) {
@@ -12,15 +25,6 @@ export default function Dashboard() {
       case 'cleaner': return 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg';
       case 'admin': return 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg';
       default: return 'bg-gradient-to-r from-gray-500 to-gray-600 text-white shadow-lg';
-    }
-  };
-
-  const getWelcomeMessage = (role) => {
-    switch(role) {
-      case 'client': return 'Post cleaning jobs with your budget and get competitive bids from professional cleaners.';
-      case 'cleaner': return 'Browse available jobs and submit competitive bids to win cleaning contracts.';
-      case 'admin': return 'Oversee the platform and manage all users and services.';
-      default: return 'Welcome to the E-Clean marketplace.';
     }
   };
 
@@ -136,6 +140,9 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Onboarding Section */}
+        <OnboardingCard user={user} />
+
         {/* Feature Cards */}
         <div className="space-y-6">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Quick Actions</h2>
@@ -249,19 +256,6 @@ export default function Dashboard() {
               <p className="text-gray-400 text-sm mt-2">Your activity will appear here once you start using the platform</p>
             </div>
           </div>
-        </div>
-
-        {/* Error Handling Demo Section */}
-        <div className="bg-gradient-to-r from-white to-yellow-50 rounded-2xl shadow-lg p-8 border border-yellow-100">
-          <h2 className="text-2xl font-bold text-gray-800 mb-8 flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-            </div>
-            <span>Error Handling Demo</span>
-          </h2>
-          <ErrorHandlingDemo />
         </div>
       </div>
     </div>

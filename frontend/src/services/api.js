@@ -1,3 +1,56 @@
+/**
+ * E-Cleaner API Service
+ *
+ * Comprehensive API service layer for the E-Cleaner platform providing centralized
+ * HTTP communication with the Django backend. Features automatic JWT token management,
+ * request/response interceptors, retry logic, and enhanced error handling.
+ *
+ * @module api
+ *
+ * @features
+ * - JWT token authentication with automatic refresh
+ * - Request/response interceptors for consistent behavior
+ * - Automatic retry logic for network failures
+ * - Enhanced error handling with user-friendly messages
+ * - Loading state management integration
+ * - Toast notification integration for feedback
+ * - Centralized API call wrapper with configurable options
+ * - Modular API sections for different domains (auth, properties, jobs, etc.)
+ *
+ * @dependencies
+ * - axios: HTTP client library
+ * - errorHandling utils: Error message generation and retry logic
+ * - localStorage: Token and user data persistence
+ * - globalToast: Toast notification system
+ * - globalLoadingManager: Loading state management
+ *
+ * @example
+ * ```javascript
+ * import { authAPI, cleaningJobsAPI } from './services/api';
+ *
+ * // Login user
+ * const loginData = await authAPI.login({ email, password });
+ *
+ * // Get cleaning jobs with loading and error handling
+ * const jobs = await cleaningJobsAPI.getAll({ status: 'active' });
+ * ```
+ *
+ * @example
+ * ```javascript
+ * // Using the generic apiCall wrapper for custom requests
+ * import { apiCall, api } from './services/api';
+ *
+ * const customRequest = await apiCall(
+ *   () => api.get('/custom/endpoint/'),
+ *   {
+ *     showLoading: true,
+ *     successMessage: 'Data loaded successfully!',
+ *     loadingKey: 'custom_data'
+ *   }
+ * );
+ * ```
+ */
+
 import axios from 'axios';
 import { getErrorMessage, retryRequest, ErrorTypes } from '../utils/errorHandling';
 
@@ -20,9 +73,13 @@ const retryAttempts = new Map();
 // Request interceptor to add JWT token
 api.interceptors.request.use(
   (config) => {
+    // Automatically add JWT token to all requests if available
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔑 Token attached to request:', config.url, 'Token exists:', !!token);
+    } else {
+      console.warn('⚠️ No token found for request:', config.url);
     }
     return config;
   },
@@ -42,12 +99,13 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     const requestKey = `${originalRequest.method}:${originalRequest.url}`;
-    
+
     // Handle token refresh for 401 errors
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
+        // Attempt to refresh the access token
         const refreshToken = localStorage.getItem('refresh_token');
         if (refreshToken) {
           const response = await axios.post(`${API_BASE_URL}/token/refresh/`, {
@@ -66,7 +124,7 @@ api.interceptors.response.use(
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
-        
+
         // Only redirect if we're not already on the login page
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
@@ -78,23 +136,23 @@ api.interceptors.response.use(
     // Handle network errors with retry logic
     if (!error.response && !originalRequest._retryCount) {
       const currentRetries = retryAttempts.get(requestKey) || 0;
-      
+
       if (currentRetries < 2) { // Max 2 retries for network errors
         retryAttempts.set(requestKey, currentRetries + 1);
         originalRequest._retryCount = currentRetries + 1;
-        
+
         // Wait before retry (exponential backoff)
-        await new Promise(resolve => 
+        await new Promise(resolve =>
           setTimeout(resolve, Math.pow(2, currentRetries) * 1000)
         );
-        
+
         return api(originalRequest);
       }
     }
 
     // Clear retry attempts for this request
     retryAttempts.delete(requestKey);
-    
+
     // Enhance error with user-friendly message
     const enhancedError = {
       ...error,
@@ -105,7 +163,33 @@ api.interceptors.response.use(
   }
 );
 
-// Enhanced API call wrapper with error handling and loading states
+/**
+ * Enhanced API call wrapper with error handling and loading states
+ *
+ * @async
+ * @function apiCall
+ * @param {Function} requestFunction - Async function that returns an axios request
+ * @param {Object} [options={}] - Configuration options
+ * @param {boolean} [options.showLoading=true] - Whether to show loading indicator
+ * @param {boolean} [options.showErrors=true] - Whether to show error toasts
+ * @param {boolean} [options.showSuccess=false] - Whether to show success toasts
+ * @param {string} [options.successMessage=''] - Success message to display
+ * @param {string} [options.loadingKey='default'] - Unique key for loading state
+ * @param {number} [options.retries=0] - Number of retry attempts
+ * @returns {Promise} Response data from the API call
+ *
+ * @example
+ * ```javascript
+ * const data = await apiCall(
+ *   () => api.get('/endpoint/'),
+ *   {
+ *     showLoading: true,
+ *     successMessage: 'Data loaded!',
+ *     loadingKey: 'fetch_data'
+ *   }
+ * );
+ * ```
+ */
 const apiCall = async (requestFunction, options = {}) => {
   const {
     showLoading = true,
@@ -117,42 +201,67 @@ const apiCall = async (requestFunction, options = {}) => {
   } = options;
 
   try {
+    // Set loading state if loading manager is available
     if (showLoading && window.globalLoadingManager) {
       window.globalLoadingManager.setLoading(loadingKey, true);
     }
 
     let result;
+    // Use retry logic if retries are specified
     if (retries > 0) {
       result = await retryRequest(requestFunction, retries);
     } else {
       result = await requestFunction();
     }
 
+    // Show success message if configured
     if (showSuccess && successMessage && window.globalToast) {
       window.globalToast.success(successMessage);
     }
 
     return result;
   } catch (error) {
+    // Show error message if configured
     if (showErrors && window.globalToast) {
       const { message } = error.userMessage || getErrorMessage(error);
       window.globalToast.error(message);
     }
     throw error;
   } finally {
+    // Clear loading state
     if (showLoading && window.globalLoadingManager) {
       window.globalLoadingManager.setLoading(loadingKey, false);
     }
   }
 };
 
-// Authentication API with enhanced error handling
+/**
+ * Authentication API module
+ *
+ * Handles user authentication, registration, profile management, and session handling.
+ *
+ * @namespace authAPI
+ */
 export const authAPI = {
+  /**
+   * Authenticate user with email and password
+   * @async
+   * @function login
+   * @param {Object} credentials - User login credentials
+   * @param {string} credentials.email - User email address
+   * @param {string} credentials.password - User password
+   * @returns {Promise<Object>} Login response with tokens and user data
+   */
   login: async (credentials) => {
     return apiCall(
       async () => {
         const response = await api.post('/auth/login/', credentials);
         const { access, refresh, user } = response.data;
+        console.log('🔐 Login response tokens:', { 
+          hasAccess: !!access, 
+          hasRefresh: !!refresh, 
+          user: user.email 
+        });
         localStorage.setItem('access_token', access);
         localStorage.setItem('refresh_token', refresh);
         localStorage.setItem('user', JSON.stringify(user));
@@ -165,7 +274,19 @@ export const authAPI = {
       }
     );
   },
-  
+
+  /**
+   * Register a new user account
+   * @async
+   * @function register
+   * @param {Object} userData - User registration data
+   * @param {string} userData.email - User email address
+   * @param {string} userData.password - User password
+   * @param {string} userData.first_name - User first name
+   * @param {string} userData.last_name - User last name
+   * @param {string} userData.user_type - User type (client/cleaner)
+   * @returns {Promise<Object>} Registration response
+   */
   register: async (userData) => {
     return apiCall(
       async () => {
@@ -179,7 +300,33 @@ export const authAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get current user profile information
+   * @async
+   * @function getProfile
+   * @returns {Promise<Object>} Current user profile data
+   */
+  getProfile: async () => {
+    return apiCall(
+      async () => {
+        const response = await api.get('/auth/profile/');
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_get_profile',
+        showSuccess: false
+      }
+    );
+  },
+
+  /**
+   * Update current user profile information
+   * @async
+   * @function updateProfile
+   * @param {Object} data - Profile update data
+   * @returns {Promise<Object>} Updated user profile data
+   */
   updateProfile: async (data) => {
     return apiCall(
       async () => {
@@ -193,7 +340,16 @@ export const authAPI = {
       }
     );
   },
-  
+
+  /**
+   * Change user password
+   * @async
+   * @function changePassword
+   * @param {Object} passwordData - Password change data
+   * @param {string} passwordData.old_password - Current password
+   * @param {string} passwordData.new_password - New password
+   * @returns {Promise<Object>} Password change response
+   */
   changePassword: async (passwordData) => {
     return apiCall(
       async () => {
@@ -207,25 +363,46 @@ export const authAPI = {
       }
     );
   },
-  
+
+  /**
+   * Logout current user by clearing stored authentication data
+   * @function logout
+   */
   logout: () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
-    
+
     if (window.globalToast) {
       window.globalToast.info('You have been logged out');
     }
   },
-  
+
+  /**
+   * Get current user data from localStorage
+   * @function getCurrentUser
+   * @returns {Object|null} Current user data or null if not logged in
+   */
   getCurrentUser: () => {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   },
 };
 
-// Properties API with enhanced error handling
+/**
+ * Properties API module
+ *
+ * Handles property management including CRUD operations and service types.
+ *
+ * @namespace propertiesAPI
+ */
 export const propertiesAPI = {
+  /**
+   * Get all properties
+   * @async
+   * @function getAll
+   * @returns {Promise<Array>} Array of property objects
+   */
   getAll: async () => {
     return apiCall(
       async () => {
@@ -238,7 +415,14 @@ export const propertiesAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get property by ID
+   * @async
+   * @function getById
+   * @param {number} id - Property ID
+   * @returns {Promise<Object>} Property object
+   */
   getById: async (id) => {
     return apiCall(
       async () => {
@@ -251,7 +435,14 @@ export const propertiesAPI = {
       }
     );
   },
-  
+
+  /**
+   * Create a new property
+   * @async
+   * @function create
+   * @param {Object} data - Property creation data
+   * @returns {Promise<Object>} Created property object
+   */
   create: async (data) => {
     return apiCall(
       async () => {
@@ -265,7 +456,15 @@ export const propertiesAPI = {
       }
     );
   },
-  
+
+  /**
+   * Update existing property
+   * @async
+   * @function update
+   * @param {number} id - Property ID
+   * @param {Object} data - Property update data
+   * @returns {Promise<Object>} Updated property object
+   */
   update: async (id, data) => {
     return apiCall(
       async () => {
@@ -279,7 +478,14 @@ export const propertiesAPI = {
       }
     );
   },
-  
+
+  /**
+   * Delete property
+   * @async
+   * @function delete
+   * @param {number} id - Property ID
+   * @returns {Promise<Object>} Deletion response
+   */
   delete: async (id) => {
     return apiCall(
       async () => {
@@ -293,7 +499,13 @@ export const propertiesAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get available service types
+   * @async
+   * @function getServiceTypes
+   * @returns {Promise<Array>} Array of service type objects
+   */
   getServiceTypes: async () => {
     return apiCall(
       async () => {
@@ -308,8 +520,21 @@ export const propertiesAPI = {
   },
 };
 
-// Cleaning Jobs API with enhanced error handling
+/**
+ * Cleaning Jobs API module
+ *
+ * Handles cleaning job management including CRUD operations and status updates.
+ *
+ * @namespace cleaningJobsAPI
+ */
 export const cleaningJobsAPI = {
+  /**
+   * Get all cleaning jobs with optional filtering
+   * @async
+   * @function getAll
+   * @param {Object} [params={}] - Query parameters for filtering
+   * @returns {Promise<Array>} Array of job objects
+   */
   getAll: async (params = {}) => {
     return apiCall(
       async () => {
@@ -322,7 +547,14 @@ export const cleaningJobsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get job by ID
+   * @async
+   * @function getById
+   * @param {number} id - Job ID
+   * @returns {Promise<Object>} Job object
+   */
   getById: async (id) => {
     return apiCall(
       async () => {
@@ -335,7 +567,14 @@ export const cleaningJobsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Create a new cleaning job
+   * @async
+   * @function create
+   * @param {Object} data - Job creation data
+   * @returns {Promise<Object>} Created job object
+   */
   create: async (data) => {
     return apiCall(
       async () => {
@@ -349,7 +588,15 @@ export const cleaningJobsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Update existing job
+   * @async
+   * @function update
+   * @param {number} id - Job ID
+   * @param {Object} data - Job update data
+   * @returns {Promise<Object>} Updated job object
+   */
   update: async (id, data) => {
     return apiCall(
       async () => {
@@ -363,7 +610,14 @@ export const cleaningJobsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Delete job
+   * @async
+   * @function delete
+   * @param {number} id - Job ID
+   * @returns {Promise<Object>} Deletion response
+   */
   delete: async (id) => {
     return apiCall(
       async () => {
@@ -377,7 +631,15 @@ export const cleaningJobsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Update job status
+   * @async
+   * @function updateStatus
+   * @param {number} id - Job ID
+   * @param {string} status - New job status
+   * @returns {Promise<Object>} Status update response
+   */
   updateStatus: async (id, status) => {
     return apiCall(
       async () => {
@@ -393,8 +655,20 @@ export const cleaningJobsAPI = {
   },
 };
 
-// Job Bids API with enhanced error handling
+/**
+ * Job Bids API module
+ *
+ * Handles job bidding functionality including bid creation, acceptance, and withdrawal.
+ *
+ * @namespace jobBidsAPI
+ */
 export const jobBidsAPI = {
+  /**
+   * Get all job bids
+   * @async
+   * @function getAll
+   * @returns {Promise<Array>} Array of bid objects
+   */
   getAll: async () => {
     return apiCall(
       async () => {
@@ -407,7 +681,14 @@ export const jobBidsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get bid by ID
+   * @async
+   * @function getById
+   * @param {number} id - Bid ID
+   * @returns {Promise<Object>} Bid object
+   */
   getById: async (id) => {
     return apiCall(
       async () => {
@@ -420,7 +701,14 @@ export const jobBidsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Create a new bid for a job
+   * @async
+   * @function create
+   * @param {Object} data - Bid creation data
+   * @returns {Promise<Object>} Created bid object
+   */
   create: async (data) => {
     return apiCall(
       async () => {
@@ -434,7 +722,14 @@ export const jobBidsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Accept a bid (client action)
+   * @async
+   * @function acceptBid
+   * @param {number} id - Bid ID to accept
+   * @returns {Promise<Object>} Bid acceptance response
+   */
   acceptBid: async (id) => {
     return apiCall(
       async () => {
@@ -448,7 +743,14 @@ export const jobBidsAPI = {
       }
     );
   },
-  
+
+  /**
+   * Withdraw a bid (cleaner action)
+   * @async
+   * @function withdrawBid
+   * @param {number} id - Bid ID to withdraw
+   * @returns {Promise<Object>} Bid withdrawal response
+   */
   withdrawBid: async (id) => {
     return apiCall(
       async () => {
@@ -464,8 +766,20 @@ export const jobBidsAPI = {
   },
 };
 
-// Service Areas API with enhanced error handling
+/**
+ * Service Areas API module
+ *
+ * Handles service area management for geographic coverage definition.
+ *
+ * @namespace serviceAreasAPI
+ */
 export const serviceAreasAPI = {
+  /**
+   * Get all service areas
+   * @async
+   * @function getAll
+   * @returns {Promise<Array>} Array of service area objects
+   */
   getAll: async () => {
     return apiCall(
       async () => {
@@ -478,7 +792,14 @@ export const serviceAreasAPI = {
       }
     );
   },
-  
+
+  /**
+   * Get service area by ID
+   * @async
+   * @function getById
+   * @param {number} id - Service area ID
+   * @returns {Promise<Object>} Service area object
+   */
   getById: async (id) => {
     return apiCall(
       async () => {
@@ -491,7 +812,14 @@ export const serviceAreasAPI = {
       }
     );
   },
-  
+
+  /**
+   * Create a new service area
+   * @async
+   * @function create
+   * @param {Object} data - Service area creation data
+   * @returns {Promise<Object>} Created service area object
+   */
   create: async (data) => {
     return apiCall(
       async () => {
@@ -505,7 +833,15 @@ export const serviceAreasAPI = {
       }
     );
   },
-  
+
+  /**
+   * Update existing service area
+   * @async
+   * @function update
+   * @param {number} id - Service area ID
+   * @param {Object} data - Service area update data
+   * @returns {Promise<Object>} Updated service area object
+   */
   update: async (id, data) => {
     return apiCall(
       async () => {
@@ -519,7 +855,14 @@ export const serviceAreasAPI = {
       }
     );
   },
-  
+
+  /**
+   * Delete service area
+   * @async
+   * @function delete
+   * @param {number} id - Service area ID
+   * @returns {Promise<Object>} Deletion response
+   */
   delete: async (id) => {
     return apiCall(
       async () => {

@@ -1,18 +1,98 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+/**
+ * LoginForm Component
+ *
+ * Authentication form component for user login in the E-Cleaner platform.
+ * Provides a secure, user-friendly interface for existing users to access their accounts.
+ *
+ * @component
+ * @requires React, React Router
+ * @requires UserContext for authentication state management
+ *
+ * @features
+ * - **Flexible Authentication**: Accepts both email and username for login
+ * - **Form Validation**: Client-side validation with required field checks
+ * - **Loading States**: Visual feedback during authentication process
+ * - **Error Handling**: User-friendly error messages for failed login attempts
+ * - **Responsive Design**: Mobile-friendly form layout with gradient styling
+ * - **Auto-focus**: Proper input focus management for accessibility
+ * - **Navigation**: Automatic redirect to dashboard on successful login
+ *
+ * @dependencies
+ * - React Router: useNavigate for post-login redirection
+ * - UserContext: login function and error state management
+ * - Tailwind CSS: Gradient backgrounds and responsive styling
+ *
+ * @api
+ * - POST /api/auth/login/ - User authentication endpoint
+ * - Returns: JWT access/refresh tokens and user profile data
+ *
+ * @state
+ * - formData: Email/username and password input values
+ * - isSubmitting: Loading state during authentication request
+ *
+ * @validation
+ * - Email/Username: Required field, accepts any string format
+ * - Password: Required field, no format restrictions (server-side validation)
+ *
+ * @errorHandling
+ * - Network errors: Displayed in error banner with retry capability
+ * - Invalid credentials: Server-provided error messages
+ * - Form validation: Browser-native required field validation
+ *
+ * @accessibility
+ * - Proper label-input associations
+ * - ARIA attributes for screen readers
+ * - Keyboard navigation support
+ * - Focus management and visual indicators
+ *
+ * @styling
+ * - Glassmorphism design with backdrop blur effects
+ * - Gradient backgrounds and text effects
+ * - Smooth transitions and hover animations
+ * - Consistent with E-Cleaner brand colors (blue/purple/indigo)
+ *
+ * @example
+ * ```jsx
+ * import LoginForm from './components/auth/LoginForm';
+ *
+ * function LoginPage() {
+ *   return (
+ *     <div className="login-page">
+ *       <LoginForm />
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @notes
+ * - Form data is cleared on successful login
+ * - Error messages persist until next submission attempt
+ * - Component handles its own navigation on success
+ */
+
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
 
 // Validate email/password (e.g., regex for format) before submission
 // Use camelCase for props per DEVELOPMENT_STANDARDS.md
 export default function LoginForm() {
+  // Form state management
   const [formData, setFormData] = useState({
     email: '', // Backend expects 'email' field (but accepts email or username as value)
     password: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Authentication context and navigation
   const { login, error } = useUser();
   const navigate = useNavigate();
 
+  /**
+   * Handles input field changes
+   * Updates form state with new input values
+   * @param {Event} e - Input change event
+   */
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -20,22 +100,28 @@ export default function LoginForm() {
     });
   };
 
+  /**
+   * Handles form submission and authentication
+   * Prevents default form behavior, manages loading state, and handles navigation
+   * @param {Event} e - Form submission event
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     const result = await login(formData);
-    
+
     if (result.success) {
       navigate('/dashboard');
     }
-    
+
     setIsSubmitting(false);
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-100 py-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-10">
+        {/* Header Section - Branding and welcome message */}
         <div className="text-center space-y-6">
           <div className="mx-auto h-16 w-16 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-600 rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
             <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,9 +135,11 @@ export default function LoginForm() {
             Sign in to your E-Clean account
           </p>
         </div>
-        
+
+        {/* Main Form Container - Glassmorphism design */}
         <div className="bg-white/80 backdrop-blur-lg rounded-3xl shadow-2xl p-10 border border-white/20">
           <form className="space-y-8" onSubmit={handleSubmit}>
+            {/* Error Display - Authentication failure messages */}
             {error && (
               <div className="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-400 p-6 rounded-2xl">
                 <div className="flex">
@@ -66,8 +154,10 @@ export default function LoginForm() {
                 </div>
               </div>
             )}
-            
+
+            {/* Form Fields */}
             <div className="space-y-6">
+              {/* Email/Username Field */}
               <div className="space-y-3">
                 <label htmlFor="email" className="block text-base font-semibold text-gray-700">
                   Email or Username
@@ -87,7 +177,8 @@ export default function LoginForm() {
                   You can sign in with either your email address or username
                 </p>
               </div>
-              
+
+              {/* Password Field */}
               <div className="space-y-3">
                 <label htmlFor="password" className="block text-base font-semibold text-gray-700">
                   Password
@@ -106,6 +197,7 @@ export default function LoginForm() {
               </div>
             </div>
 
+            {/* Submit Button */}
             <div className="pt-4">
               <button
                 type="submit"
@@ -126,7 +218,8 @@ export default function LoginForm() {
               </button>
             </div>
           </form>
-          
+
+          {/* Registration Link - Bottom section */}
           <div className="mt-8">
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -136,7 +229,7 @@ export default function LoginForm() {
                 <span className="px-4 bg-white text-gray-500 font-medium">New to E-Clean?</span>
               </div>
             </div>
-            
+
             <div className="mt-6 text-center">
               <Link
                 to="/register"

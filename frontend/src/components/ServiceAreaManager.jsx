@@ -79,8 +79,7 @@ const ServiceAreaManager = () => {
           }));
         },
         (error) => {
-          console.log('Geolocation error:', error);
-          // Keep default Athens location
+          // Geolocation failed, keep default Athens location
         }
       );
     }
@@ -140,7 +139,6 @@ const ServiceAreaManager = () => {
         radius_miles: formData.radius_miles ? parseFloat(formData.radius_miles) : null
       };
 
-      console.log('Sending service area data:', dataToSend);
       await serviceAreasAPI.create(dataToSend);
       toast.success('Service area created successfully!');
       setShowCreateForm(false);

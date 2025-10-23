@@ -50,13 +50,6 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
 
   // Check if current user owns this property
   const isOwner = user && property.owner && user.email === property.owner.email;
-  
-  // Debug logging
-  console.log('PropertyCard Debug:', {
-    user: user?.email,
-    propertyOwner: property.owner,
-    isOwner: isOwner
-  });
 
   // Handle property deletion
   const handleDelete = async () => {

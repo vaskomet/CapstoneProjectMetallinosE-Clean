@@ -57,11 +57,67 @@ const CompletedJobsDashboard = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
+  };
+
+  const formatDateTime = (dateTimeString) => {
+    if (!dateTimeString) return 'N/A';
+    return new Date(dateTimeString).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return 'N/A';
+    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const calculateDuration = (startTime, endTime) => {
+    if (!startTime || !endTime) return 'N/A';
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const diffMs = end - start;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffHours > 0) {
+      return `${diffHours}h ${diffMinutes}m`;
+    }
+    return `${diffMinutes}m`;
+  };
+
+  const renderStarRating = (rating) => {
+    if (!rating) return <span className="text-gray-400">No rating</span>;
+    
+    return (
+      <div className="flex items-center space-x-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <svg
+            key={star}
+            className={`w-4 h-4 ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        ))}
+        <span className="text-sm text-gray-600 ml-1">({rating}/5)</span>
+      </div>
+    );
   };
 
   const formatCurrency = (amount) => {
@@ -111,11 +167,147 @@ const CompletedJobsDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto p-6">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Completed Jobs</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {user?.role === 'client' ? 'Cleaning History' : 'Completed Jobs'}
+          </h1>
           <p className="text-gray-600 mt-2">
-            View your completed cleaning jobs and their documentation
+            {user?.role === 'client' 
+              ? 'View your property cleaning history, reviews, and cleaner details'
+              : 'View your completed cleaning jobs and client feedback'
+            }
           </p>
         </div>
+
+        {/* Summary Statistics */}
+        {completedJobs.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">
+                    {user?.role === 'client' ? 'Properties Cleaned' : 'Jobs Completed'}
+                  </p>
+                  <p className="text-2xl font-semibold text-gray-900">{completedJobs.length}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-500">
+                    {user?.role === 'client' ? 'Total Spent' : 'Total Earned'}
+                  </p>
+                  <p className="text-2xl font-semibold text-gray-900">
+                    {formatCurrency(
+                      completedJobs.reduce((sum, job) => sum + parseFloat(job.final_price || job.client_budget || 0), 0)
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {user?.role === 'client' ? (
+              // Client-specific stats
+              <>
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-8 w-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-500">Properties Serviced</p>
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {new Set(completedJobs.map(job => job.property?.id).filter(Boolean)).size}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-8 w-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-500">Trusted Cleaners</p>
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {new Set(completedJobs.map(job => job.cleaner?.id).filter(Boolean)).size}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              // Cleaner-specific stats
+              <>
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-8 w-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-500">Avg Rating</p>
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {(() => {
+                          const ratedJobs = completedJobs.filter(job => job.client_rating);
+                          if (ratedJobs.length === 0) return 'N/A';
+                          const avgRating = ratedJobs.reduce((sum, job) => sum + job.client_rating, 0) / ratedJobs.length;
+                          return `${avgRating.toFixed(1)}/5`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <svg className="h-8 w-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-500">Avg Duration</p>
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {(() => {
+                          const jobsWithDuration = completedJobs.filter(job => job.actual_start_time && job.actual_end_time);
+                          if (jobsWithDuration.length === 0) return 'N/A';
+                          const totalMinutes = jobsWithDuration.reduce((sum, job) => {
+                            const start = new Date(job.actual_start_time);
+                            const end = new Date(job.actual_end_time);
+                            return sum + (end - start) / (1000 * 60);
+                          }, 0);
+                          const avgMinutes = totalMinutes / jobsWithDuration.length;
+                          const hours = Math.floor(avgMinutes / 60);
+                          const minutes = Math.round(avgMinutes % 60);
+                          return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {completedJobs.length === 0 ? (
           <div className="text-center py-12">
@@ -124,20 +316,21 @@ const CompletedJobsDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No completed jobs yet</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {user?.role === 'client' ? 'No cleaning history yet' : 'No completed jobs yet'}
+            </h3>
             <p className="text-gray-500">
-              {user?.role === 'cleaner' 
-                ? 'Complete your first cleaning job to see it here'
-                : 'Your completed jobs will appear here'
-              }
-            </p>
+              {user?.role === 'client' 
+                ? 'Your completed cleaning services will appear here'
+                : 'Complete your first cleaning job to see it here'
+              }</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Jobs List */}
             <div className="lg:col-span-1 space-y-4">
               <h2 className="text-lg font-semibold text-gray-900">
-                {completedJobs.length} Completed Job{completedJobs.length !== 1 ? 's' : ''}
+                {completedJobs.length} {user?.role === 'client' ? 'Cleaning' : 'Completed'} {user?.role === 'client' ? 'Service' : 'Job'}{completedJobs.length !== 1 ? 's' : ''}
               </h2>
               <div className="space-y-3">
                 {completedJobs.map((job) => (
@@ -156,22 +349,49 @@ const CompletedJobsDashboard = () => {
                       <h3 className="font-medium text-gray-900">
                         Job #{job.id}
                       </h3>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Completed
-                      </span>
+                      <div className="flex flex-col items-end space-y-1">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Completed
+                        </span>
+                        {job.client_rating && (
+                          <div className="flex items-center">
+                            <svg className="w-3 h-3 text-yellow-400 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                            <span className="text-xs text-gray-600">{job.client_rating}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm text-gray-600 mb-2">
                       {job.property?.address || 'Address not available'}
                     </p>
-                    <div className="flex justify-between items-center text-xs text-gray-500">
-                      <span>{formatDate(job.scheduled_date)}</span>
-                      <span className="font-medium text-gray-900">
-                        {formatCurrency(job.final_price || job.client_budget)}
-                      </span>
+                    <div className="space-y-1 mb-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-500">Scheduled:</span>
+                        <span className="text-gray-700">{formatDate(job.scheduled_date)}</span>
+                      </div>
+                      {job.actual_start_time && job.actual_end_time && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-500">Duration:</span>
+                          <span className="text-gray-700">{calculateDuration(job.actual_start_time, job.actual_end_time)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-gray-500">Price:</span>
+                        <span className="font-medium text-gray-900">
+                          {formatCurrency(job.final_price || job.client_budget)}
+                        </span>
+                      </div>
                     </div>
                     {user?.role === 'client' && job.cleaner && (
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-gray-500">
                         Cleaner: {job.cleaner.first_name} {job.cleaner.last_name}
+                      </p>
+                    )}
+                    {user?.role === 'cleaner' && job.client && (
+                      <p className="text-xs text-gray-500">
+                        Client: {job.client.first_name} {job.client.last_name}
                       </p>
                     )}
                   </div>
@@ -189,50 +409,203 @@ const CompletedJobsDashboard = () => {
                     </h2>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Basic Information */}
                       <div className="space-y-4">
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">Property Address</h3>
                           <p className="text-gray-900">{selectedJob.property?.address || 'N/A'}</p>
+                          {selectedJob.property?.city && (
+                            <p className="text-sm text-gray-600">{selectedJob.property.city}, {selectedJob.property.state}</p>
+                          )}
                         </div>
+                        
                         <div>
-                          <h3 className="text-sm font-medium text-gray-500">Service Date</h3>
+                          <h3 className="text-sm font-medium text-gray-500">Scheduled Date & Time</h3>
                           <p className="text-gray-900">{formatDate(selectedJob.scheduled_date)}</p>
+                          <p className="text-sm text-gray-600">
+                            {formatTime(selectedJob.start_time)} - {formatTime(selectedJob.end_time)}
+                          </p>
                         </div>
+
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">Services Provided</h3>
                           <p className="text-gray-900">{selectedJob.services_description || 'N/A'}</p>
                         </div>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Final Price</h3>
-                          <p className="text-lg font-semibold text-gray-900">
-                            {formatCurrency(selectedJob.final_price || selectedJob.client_budget)}
-                          </p>
-                        </div>
-                        {user?.role === 'client' && selectedJob.cleaner && (
+
+                        {selectedJob.notes && (
                           <div>
-                            <h3 className="text-sm font-medium text-gray-500">Cleaner</h3>
-                            <p className="text-gray-900">
-                              {selectedJob.cleaner.first_name} {selectedJob.cleaner.last_name}
-                            </p>
+                            <h3 className="text-sm font-medium text-gray-500">Notes</h3>
+                            <p className="text-gray-900 text-sm">{selectedJob.notes}</p>
                           </div>
                         )}
-                        {selectedJob.checklist && selectedJob.checklist.length > 0 && (
+                      </div>
+                      
+                      {/* Timing and Performance */}
+                      <div className="space-y-4">
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500">Actual Performance</h3>
+                          <div className="mt-1 space-y-1">
+                            <p className="text-sm text-gray-900">
+                              <span className="font-medium">Started:</span> {formatDateTime(selectedJob.actual_start_time)}
+                            </p>
+                            <p className="text-sm text-gray-900">
+                              <span className="font-medium">Completed:</span> {formatDateTime(selectedJob.actual_end_time)}
+                            </p>
+                            <p className="text-sm text-gray-900">
+                              <span className="font-medium">Duration:</span> {calculateDuration(selectedJob.actual_start_time, selectedJob.actual_end_time)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-500">Pricing</h3>
+                          <div className="mt-1 space-y-1">
+                            <p className="text-lg font-semibold text-gray-900">
+                              {formatCurrency(selectedJob.final_price || selectedJob.client_budget)}
+                            </p>
+                            {selectedJob.discount_applied > 0 && (
+                              <p className="text-sm text-green-600">
+                                Discount Applied: -{formatCurrency(selectedJob.discount_applied)}
+                              </p>
+                            )}
+                            {selectedJob.client_budget && selectedJob.final_price !== selectedJob.client_budget && (
+                              <p className="text-xs text-gray-500">
+                                Original Budget: {formatCurrency(selectedJob.client_budget)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {user?.role === 'client' && selectedJob.cleaner && (
                           <div>
-                            <h3 className="text-sm font-medium text-gray-500">Services Completed</h3>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {selectedJob.checklist.map((item, index) => (
-                                <span key={index} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-green-100 text-green-800">
-                                  ✓ {item}
-                                </span>
-                              ))}
+                            <h3 className="text-sm font-medium text-gray-500 mb-2">Your Cleaner</h3>
+                            <div className="bg-gray-50 rounded-lg p-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {selectedJob.cleaner.first_name} {selectedJob.cleaner.last_name}
+                                  </p>
+                                  {selectedJob.cleaner.email && (
+                                    <p className="text-sm text-gray-600">{selectedJob.cleaner.email}</p>
+                                  )}
+                                  {selectedJob.client_rating && (
+                                    <div className="flex items-center mt-1">
+                                      {renderStarRating(selectedJob.client_rating)}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col space-y-2">
+                                  <button 
+                                    className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
+                                    onClick={() => {
+                                      // TODO: Implement messaging functionality
+                                      toast.info('Messaging feature coming soon!');
+                                    }}
+                                  >
+                                    Message Cleaner
+                                  </button>
+                                  <button 
+                                    className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
+                                    onClick={() => {
+                                      // TODO: Implement re-booking functionality
+                                      toast.info('Re-booking feature coming soon!');
+                                    }}
+                                  >
+                                    Book Again
+                                  </button>
+                                </div>
+                              </div>
                             </div>
+                          </div>
+                        )}
+
+                        {user?.role === 'cleaner' && selectedJob.client && (
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-500">Client</h3>
+                            <p className="text-gray-900">
+                              {selectedJob.client.first_name} {selectedJob.client.last_name}
+                            </p>
+                            {selectedJob.client.email && (
+                              <p className="text-sm text-gray-600">{selectedJob.client.email}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {selectedJob.cleaner_confirmed_at && (
+                          <div>
+                            <h3 className="text-sm font-medium text-gray-500">Job Confirmed</h3>
+                            <p className="text-sm text-gray-900">{formatDateTime(selectedJob.cleaner_confirmed_at)}</p>
                           </div>
                         )}
                       </div>
                     </div>
+
+                    {/* Services Checklist */}
+                    {selectedJob.checklist && selectedJob.checklist.length > 0 && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <h3 className="text-sm font-medium text-gray-500 mb-3">Services Completed</h3>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedJob.checklist.map((item, index) => (
+                            <span key={index} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                              <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Client Review and Rating */}
+                    {(selectedJob.client_rating || selectedJob.client_review) && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <h3 className="text-sm font-medium text-gray-500 mb-3">
+                          {user?.role === 'client' ? 'Your Review' : 'Client Review'}
+                        </h3>
+                        {selectedJob.client_rating && (
+                          <div className="mb-3">
+                            {renderStarRating(selectedJob.client_rating)}
+                          </div>
+                        )}
+                        {selectedJob.client_review && (
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <p className="text-gray-900 italic">"{selectedJob.client_review}"</p>
+                          </div>
+                        )}
+                        {user?.role === 'client' && !selectedJob.client_rating && !selectedJob.client_review && (
+                          <div className="bg-blue-50 rounded-lg p-4">
+                            <p className="text-blue-800 text-sm">
+                              💡 You can leave a review and rating for this cleaning service to help other clients and provide feedback to your cleaner.
+                            </p>
+                            <button 
+                              className="mt-2 px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-md hover:bg-blue-50 transition-colors"
+                              onClick={() => {
+                                // TODO: Implement review functionality
+                                toast.info('Review feature coming soon!');
+                              }}
+                            >
+                              Leave a Review
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Eco Impact Metrics */}
+                    {selectedJob.eco_impact_metrics && Object.keys(selectedJob.eco_impact_metrics).length > 0 && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <h3 className="text-sm font-medium text-gray-500 mb-3">Environmental Impact</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {Object.entries(selectedJob.eco_impact_metrics).map(([key, value]) => (
+                            <div key={key} className="text-center p-3 bg-green-50 rounded-lg">
+                              <p className="text-lg font-semibold text-green-700">{value}</p>
+                              <p className="text-xs text-green-600 capitalize">{key.replace(/_/g, ' ')}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Photos Section */}
