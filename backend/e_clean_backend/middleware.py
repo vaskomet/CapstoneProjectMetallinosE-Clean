@@ -46,15 +46,18 @@ class JWTAuthMiddleware(BaseMiddleware):
     
     async def __call__(self, scope, receive, send):
         # Get token from query string
-        query_params = dict(scope.get('query_string', b'').decode().split('&'))
-        token = None
+        query_string = scope.get('query_string', b'').decode()
+        query_params = {}
         
-        for param in query_params:
-            if '=' in param:
-                key, value = param.split('=', 1)
-                if key == 'token':
-                    token = value
-                    break
+        # Parse query string manually
+        if query_string:
+            for param in query_string.split('&'):
+                if '=' in param:
+                    key, value = param.split('=', 1)
+                    query_params[key] = value
+        
+        # Get token from query params
+        token = query_params.get('token')
         
         # Authenticate user
         if token:

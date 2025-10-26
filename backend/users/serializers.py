@@ -19,6 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
+            'id',  # Include user ID for WebSocket connections and references
             'email', 
             'username',
             'role', 

@@ -27,6 +27,9 @@ urlpatterns = [
     path('service-areas/', views.ServiceAreaListCreateView.as_view(), name='service-areas'),
     path('service-areas/<int:pk>/', views.ServiceAreaDetailView.as_view(), name='service-area-detail'),
 
+    # Search for cleaners by location
+    path('search-cleaners/', views.search_cleaners_by_location, name='search-cleaners'),
+
     # Future endpoints for user profile management can be added here.
     # e.g., path('profile/', views.ProfileView.as_view(), name='profile'),
 ]

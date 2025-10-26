@@ -8,24 +8,42 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     participant_count = serializers.SerializerMethodField()
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    last_message_sender = UserSerializer(read_only=True)
     
     class Meta:
         model = ChatRoom
         fields = [
             'id', 'name', 'room_type', 'job', 'participants', 
             'participant_count', 'last_message', 'unread_count',
+            'last_message_content', 'last_message_time', 'last_message_sender',
             'created_at', 'updated_at', 'is_active'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = [
+            'created_at', 'updated_at', 
+            'last_message_content', 'last_message_time', 'last_message_sender'
+        ]
     
     def get_participant_count(self, obj):
         return obj.participants.count()
     
     def get_last_message(self, obj):
-        last_message = obj.messages.last()
-        if last_message:
-            return MessageSerializer(last_message).data
-        return None
+        """
+        Return last message info using denormalized fields for performance.
+        Falls back to database query if denormalized fields not populated.
+        """
+        if obj.last_message_time and obj.last_message_content:
+            # Use denormalized data (faster)
+            return {
+                'content': obj.last_message_content,
+                'timestamp': obj.last_message_time.isoformat() if obj.last_message_time else None,  # ← Convert to string!
+                'sender': UserSerializer(obj.last_message_sender).data if obj.last_message_sender else None
+            }
+        else:
+            # Fallback to database query (slower, but works if not denormalized yet)
+            last_message = obj.messages.order_by('-id').first()
+            if last_message:
+                return MessageSerializer(last_message).data
+            return None
     
     def get_unread_count(self, obj):
         request = self.context.get('request')

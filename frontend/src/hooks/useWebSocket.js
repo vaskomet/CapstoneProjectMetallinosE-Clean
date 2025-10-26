@@ -134,20 +134,47 @@ export const useChat = (roomId) => {
   useEffect(() => {
     if (!roomId) return;
 
+    let isMounted = true;
     const ws = connectChatWebSocket(roomId);
+    
     if (ws) {
       wsRef.current = ws;
 
-      ws.onopen = () => setIsConnected(true);
-      ws.onclose = () => setIsConnected(false);
-      ws.onerror = () => setIsConnected(false);
+      // Store the original onopen handler from connectChatWebSocket
+      const originalOnOpen = ws.onopen;
+      const originalOnClose = ws.onclose;
+      const originalOnError = ws.onerror;
+
+      // Enhance handlers without overwriting
+      ws.onopen = (event) => {
+        if (originalOnOpen) originalOnOpen(event);
+        if (isMounted) {
+          setIsConnected(true);
+        }
+      };
+      
+      ws.onclose = (event) => {
+        if (originalOnClose) originalOnClose(event);
+        if (isMounted) {
+          setIsConnected(false);
+        }
+      };
+      
+      ws.onerror = (event) => {
+        if (originalOnError) originalOnError(event);
+        if (isMounted) {
+          setIsConnected(false);
+        }
+      };
     }
 
     return () => {
-      if (wsRef.current) {
+      isMounted = false;
+      // Only close if WebSocket is actually open or connecting
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
         wsRef.current.close();
-        setIsConnected(false);
       }
+      setIsConnected(false);
     };
   }, [roomId, connectChatWebSocket]);
 
@@ -159,8 +186,8 @@ export const useChat = (roomId) => {
   const sendMessage = (content, messageType = 'text') => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
-        action: 'send_message',
-        content,
+        type: 'message',  // Changed from 'action' to 'type' to match backend
+        message: content,  // Changed from 'content' to 'message' to match backend
         message_type: messageType
       }));
     }
@@ -172,7 +199,8 @@ export const useChat = (roomId) => {
   const sendTypingIndicator = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN && !isTyping) {
       wsRef.current.send(JSON.stringify({
-        action: 'typing_start'
+        type: 'typing',  // Changed from 'action' to 'type' to match backend
+        is_typing: true
       }));
       setIsTyping(true);
     }
@@ -186,7 +214,8 @@ export const useChat = (roomId) => {
     typingTimeoutRef.current = setTimeout(() => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
-          action: 'typing_stop'
+          type: 'typing',  // Changed from 'action' to 'type' to match backend
+          is_typing: false
         }));
         setIsTyping(false);
       }
@@ -199,7 +228,8 @@ export const useChat = (roomId) => {
   const stopTyping = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN && isTyping) {
       wsRef.current.send(JSON.stringify({
-        action: 'typing_stop'
+        type: 'typing',  // Changed from 'action' to 'type' to match backend
+        is_typing: false
       }));
       setIsTyping(false);
     }

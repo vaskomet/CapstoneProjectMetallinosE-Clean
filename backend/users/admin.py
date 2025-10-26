@@ -1,19 +1,17 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User
+from .models import User, ServiceArea
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
     """
     Custom User admin with fields specific to our User model.
-    Displays role, email, and other custom fields in the admin interface.
     """
     list_display = ('email', 'first_name', 'last_name', 'role', 'is_active', 'date_joined')
     list_filter = ('role', 'is_active', 'is_staff', 'date_joined')
     search_fields = ('email', 'first_name', 'last_name', 'phone_number')
     ordering = ('email',)
     
-    # Field organization for the user detail view
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Personal Info', {'fields': ('first_name', 'last_name', 'phone_number', 'profile_picture')}),
@@ -22,13 +20,23 @@ class CustomUserAdmin(UserAdmin):
         ('Permissions', {'fields': ('groups', 'user_permissions')}),
     )
     
-    # Fields for creating new users
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
             'fields': ('email', 'password1', 'password2', 'role', 'first_name', 'last_name'),
         }),
     )
+
+@admin.register(ServiceArea)
+class ServiceAreaAdmin(admin.ModelAdmin):
+    """
+    ServiceArea admin interface.
+    """
+    list_display = ('cleaner', 'area_name', 'area_type', 'city', 'state', 'is_active')
+    list_filter = ('area_type', 'state', 'is_active')
+    search_fields = ('cleaner__email', 'area_name', 'city')
     
-    # Use email as the username field
-    username_field = 'email'
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "cleaner":
+            kwargs["queryset"] = User.objects.filter(role='cleaner')
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)

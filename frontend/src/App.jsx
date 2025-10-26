@@ -3,9 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { UserProvider } from './contexts/UserContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
+import { UnifiedChatProvider } from './contexts/UnifiedChatContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navigation from './components/Navigation';
 import NotificationToast from './components/notifications/NotificationToast';
+import FloatingChatPanel from './components/chat/FloatingChatPanel';
+import ConnectionStateIndicator from './components/chat/ConnectionStateIndicator';
+import DirectMessages from './components/chat/DirectMessages';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/Dashboard';
@@ -13,6 +17,7 @@ import PropertiesDashboard from './components/PropertiesDashboard';
 import CleaningJobsPool from './components/CleaningJobsPool';
 import CompletedJobsDashboard from './components/CompletedJobsDashboard';
 import Profile from './components/Profile';
+import ChatPage from './pages/ChatPage';
 import './utils/globalSetup'; // Initialize global error handling
 import './App.css';
 
@@ -23,11 +28,14 @@ function App() {
     <UserProvider>
       <ToastProvider>
         <WebSocketProvider>
-          <Router>
-            <div className="App min-h-screen flex flex-col">
-              <Navigation />
-              <NotificationToast />
-              <main className="flex-1">
+          <UnifiedChatProvider>
+            <Router>
+              <div className="App min-h-screen flex flex-col">
+                <Navigation />
+                <NotificationToast />
+                <ConnectionStateIndicator />
+                <FloatingChatPanel />
+                <main className="flex-1">
                 <Routes>
                   <Route path="/login" element={<LoginForm />} />
                   <Route path="/register" element={<RegisterForm />} />
@@ -56,6 +64,22 @@ function App() {
                   } 
                 />
                 <Route 
+                  path="/jobs/:jobId/chat" 
+                  element={
+                    <ProtectedRoute>
+                      <ChatPage />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/messages" 
+                  element={
+                    <ProtectedRoute>
+                      <DirectMessages />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
                   path="/completed-jobs" 
                   element={
                     <ProtectedRoute>
@@ -76,6 +100,7 @@ function App() {
             </main>
           </div>
         </Router>
+          </UnifiedChatProvider>
         </WebSocketProvider>
       </ToastProvider>
     </UserProvider>

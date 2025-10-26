@@ -124,8 +124,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         """Send message to WebSocket"""
         await self.send(text_data=json.dumps({
-            'type': 'message',
-            'data': event['message']
+            'type': 'chat_message',  # Changed from 'message' to 'chat_message' to match frontend
+            'message': event['message']  # Changed from 'data' to 'message' to match frontend
         }))
     
     async def user_status(self, event):
@@ -148,7 +148,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def save_message(self, content, reply_to_id=None):
-        """Save message to database"""
+        """Save message to database and update room's last message"""
         try:
             room, created = ChatRoom.objects.get_or_create(
                 name=self.room_name,
@@ -171,6 +171,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 content=content,
                 reply_to=reply_to
             )
+            
+            # Update denormalized last_message fields on room
+            room.update_last_message(message)
+            
+            # Increment unread count for other participants
+            participants = ChatParticipant.objects.filter(room=room).exclude(user=self.user)
+            for participant in participants:
+                participant.increment_unread()
             
             return message
         except Exception as e:
@@ -296,8 +304,8 @@ class JobChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         """Send message to WebSocket"""
         await self.send(text_data=json.dumps({
-            'type': 'message',
-            'data': event['message']
+            'type': 'chat_message',  # Changed from 'message' to 'chat_message' to match frontend
+            'message': event['message']  # Changed from 'data' to 'message' to match frontend
         }))
     
     async def typing_status(self, event):
@@ -317,7 +325,7 @@ class JobChatConsumer(AsyncWebsocketConsumer):
             job = CleaningJob.objects.get(id=self.job_id)
             # User can access if they are the client or assigned cleaner
             return (job.client == self.user or 
-                   job.assigned_cleaner == self.user or
+                   job.cleaner == self.user or  # Fixed: changed from assigned_cleaner to cleaner
                    self.user.role == 'admin')
         except CleaningJob.DoesNotExist:
             return False
@@ -337,15 +345,15 @@ class JobChatConsumer(AsyncWebsocketConsumer):
             )
             # Add participants
             room.participants.add(job.client)
-            if job.assigned_cleaner:
-                room.participants.add(job.assigned_cleaner)
+            if job.cleaner:  # Fixed: changed from assigned_cleaner to cleaner
+                room.participants.add(job.cleaner)
             return room
         except CleaningJob.DoesNotExist:
             return None
     
     @database_sync_to_async
     def save_job_message(self, content):
-        """Save job chat message to database"""
+        """Save job chat message to database and update room's last message"""
         try:
             room = ChatRoom.objects.get(job_id=self.job_id)
             message = Message.objects.create(
@@ -353,6 +361,15 @@ class JobChatConsumer(AsyncWebsocketConsumer):
                 sender=self.user,
                 content=content
             )
+            
+            # Update denormalized last_message fields on room
+            room.update_last_message(message)
+            
+            # Increment unread count for other participants
+            participants = ChatParticipant.objects.filter(room=room).exclude(user=self.user)
+            for participant in participants:
+                participant.increment_unread()
+            
             return message
         except ChatRoom.DoesNotExist:
             return None

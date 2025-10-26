@@ -327,6 +327,8 @@ const CleaningJobsPool = () => {
         property: parseInt(formData.property)
       };
       
+      console.log('📤 Sending job data:', JSON.stringify(jobData, null, 2));
+      
       await cleaningJobsAPI.create(jobData);
       toast.success('Job created successfully!');
       setShowCreateModal(false);
@@ -576,9 +578,12 @@ const CleaningJobsPool = () => {
    */
   function getStatusColor(status) {
     switch (status) {
-      case 'open_for_bids': return '#f59e0b'; // yellow - available for bidding
-      case 'confirmed': return '#3b82f6'; // blue - accepted bid, awaiting cleaner confirmation
+      case 'open_for_bids': return '#f59e0b'; // amber - available for bidding
+      case 'bid_accepted': return '#06b6d4'; // cyan - bid accepted, awaiting confirmation
+      case 'confirmed': return '#3b82f6'; // blue - confirmed by cleaner
+      case 'ready_to_start': return '#6366f1'; // indigo - ready to begin work
       case 'in_progress': return '#8b5cf6'; // purple - job actively being worked on
+      case 'awaiting_review': return '#14b8a6'; // teal - waiting for client review
       case 'completed': return '#10b981'; // green - job finished successfully
       case 'cancelled': return '#ef4444'; // red - job cancelled
       default: return '#6b7280'; // gray - unknown status
@@ -942,14 +947,30 @@ const CleaningJobsPool = () => {
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
-                <button
-                  onClick={() => setShowJobModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="flex items-center space-x-3">
+                  {/* Chat Button */}
+                  <button
+                    onClick={() => {
+                      navigate(`/jobs/${selectedJob.id}/chat`);
+                      setShowJobModal(false);
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
+                    <span>Chat</span>
+                  </button>
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setShowJobModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -965,12 +986,16 @@ const CleaningJobsPool = () => {
                   <span className="font-medium text-gray-700">Status:</span>
                   <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
                     selectedJob.status === 'completed' ? 'bg-green-100 text-green-800' :
-                    selectedJob.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                    selectedJob.status === 'confirmed' ? 'bg-yellow-100 text-yellow-800' :
-                    selectedJob.status === 'open_for_bids' ? 'bg-orange-100 text-orange-800' :
+                    selectedJob.status === 'awaiting_review' ? 'bg-teal-100 text-teal-800' :
+                    selectedJob.status === 'in_progress' ? 'bg-purple-100 text-purple-800' :
+                    selectedJob.status === 'ready_to_start' ? 'bg-indigo-100 text-indigo-800' :
+                    selectedJob.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                    selectedJob.status === 'bid_accepted' ? 'bg-cyan-100 text-cyan-800' :
+                    selectedJob.status === 'open_for_bids' ? 'bg-amber-100 text-amber-800' :
+                    selectedJob.status === 'cancelled' ? 'bg-red-100 text-red-800' :
                     'bg-gray-100 text-gray-800'
                   }`}>
-                    {selectedJob.status?.replace('_', ' ')}
+                    {selectedJob.status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   </span>
                 </div>
                 

@@ -1,7 +1,7 @@
 /**
  * ChatRoom Component
  *
- * Real-time chat interface for job-specific communication between clients and cleaners.
+ * Real-time chat interface for job-specific OR direct message communication.
  * Provides WebSocket-powered messaging with typing indicators, read receipts, and file attachments.
  *
  * @component
@@ -26,8 +26,10 @@
  * - Tailwind CSS: Responsive styling and animations
  *
  * @props
- * - jobId: string - Unique identifier for the job/chat room (required)
+ * - jobId: string - Unique identifier for the job (converts to room ID internally)
+ * - roomId: string - Direct room ID (for DMs or when room ID is already known)
  * - className: string - Additional CSS classes for styling (optional)
+ * Note: Provide EITHER jobId OR roomId, not both
  *
  * @state
  * - newMessage: Current message being typed
@@ -93,28 +95,84 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
-import { useChat } from '../../hooks/useWebSocket';
+import { useUnifiedChatRoom } from '../../hooks/useUnifiedChatRoom';
+import InfiniteScrollMessages from './InfiniteScrollMessages';
+import { chatAPI } from '../../services/api';
 
-const ChatRoom = ({ jobId, className = "" }) => {
+const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
   const { user } = useUser();
-  const { messages, isConnected, sendMessage, sendTypingIndicator, stopTyping } = useChat(jobId);
+  
+  // State to hold the actual room ID (fetched by job ID if needed)
+  const [roomId, setRoomId] = useState(propRoomId || null);
+  const [roomLoading, setRoomLoading] = useState(!!jobId && !propRoomId); // Only load if jobId provided
+  const [roomError, setRoomError] = useState(null);
+  
+  // Fetch room ID from job ID (if jobId provided and no direct roomId)
+  useEffect(() => {
+    if (propRoomId) {
+      // Direct room ID provided, use it immediately
+      console.log(`✅ Using provided room ID: ${propRoomId}`);
+      setRoomId(propRoomId);
+      setRoomLoading(false);
+      return;
+    }
 
-  // Local state for message input and typing management
+    if (!jobId) {
+      setRoomError('Either jobId or roomId must be provided');
+      setRoomLoading(false);
+      return;
+    }
+    
+    const fetchRoom = async () => {
+      try {
+        setRoomLoading(true);
+        setRoomError(null);
+        console.log(`🔍 Fetching room for job ${jobId}`);
+        const room = await chatAPI.getJobChatRoom(jobId);
+        
+        if (room && room.id) {
+          console.log(`✅ Found room ${room.id} for job ${jobId}`);
+          setRoomId(room.id);
+        } else {
+          const error = `No chat room found for job ${jobId}`;
+          console.error(`❌ ${error}`);
+          setRoomError(error);
+        }
+      } catch (error) {
+        console.error(`❌ Error fetching room for job ${jobId}:`, error);
+        setRoomError(error.message || 'Failed to load chat room');
+      } finally {
+        setRoomLoading(false);
+      }
+    };
+    
+    fetchRoom();
+  }, [jobId, propRoomId]);
+  
+  // Use unified chat room hook with pagination + WebSocket
+  const {
+    messages,
+    hasMore,
+    isLoading,
+    isLoadingMore,
+    loadMore,
+    sendMessage,
+    isConnected,
+    sendTyping: sendTypingIndicator,
+    stopTyping,
+    typingUsers,
+  } = useUnifiedChatRoom(roomId, {
+    autoSubscribe: true,
+    autoMarkRead: true,
+    pageSize: 50
+  });
+
+  // Local state for message input
   const [newMessage, setNewMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
 
   // Refs for DOM manipulation
-  const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-
-  /**
-   * Auto-scroll to bottom when new messages arrive
-   * Ensures latest messages are always visible
-   */
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   /**
    * Focus input field when component mounts
@@ -136,7 +194,11 @@ const ChatRoom = ({ jobId, className = "" }) => {
     sendMessage(newMessage.trim());
     setNewMessage('');
     stopTyping();
-    setIsTyping(false);
+    
+    // Clear typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
   };
 
   /**
@@ -148,9 +210,8 @@ const ChatRoom = ({ jobId, className = "" }) => {
     setNewMessage(e.target.value);
 
     // Send typing indicator if starting to type
-    if (e.target.value && !isTyping) {
+    if (e.target.value) {
       sendTypingIndicator();
-      setIsTyping(true);
     }
 
     // Clear existing timeout and set new one
@@ -158,10 +219,10 @@ const ChatRoom = ({ jobId, className = "" }) => {
       clearTimeout(typingTimeoutRef.current);
     }
 
+    // Auto-stop typing after 2 seconds
     typingTimeoutRef.current = setTimeout(() => {
       stopTyping();
-      setIsTyping(false);
-    }, 2000); // Stop typing indicator after 2 seconds
+    }, 2000);
   };
 
   /**
@@ -210,6 +271,33 @@ const ChatRoom = ({ jobId, className = "" }) => {
     }
   };
 
+  // Show loading state while fetching room
+  if (roomLoading) {
+    return (
+      <div className={`flex items-center justify-center h-full bg-white border border-gray-200 rounded-lg ${className}`}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading chat room...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if room not found
+  if (roomError || !roomId) {
+    return (
+      <div className={`flex items-center justify-center h-full bg-white border border-gray-200 rounded-lg ${className}`}>
+        <div className="text-center text-red-600">
+          <svg className="w-12 h-12 mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+          </svg>
+          <p className="font-semibold">{roomError || 'Chat room not found'}</p>
+          <p className="text-sm text-gray-600 mt-2">This job may not have a chat room yet.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex flex-col h-full bg-white border border-gray-200 rounded-lg ${className}`}>
       {/* Chat Header - Title and connection status */}
@@ -230,9 +318,16 @@ const ChatRoom = ({ jobId, className = "" }) => {
         )}
       </div>
 
-      {/* Messages Container - Scrollable message history */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 ? (
+      {/* Messages Container - Scrollable message history with pagination */}
+      <InfiniteScrollMessages
+        onLoadMore={loadMore}
+        hasMore={hasMore}
+        isLoading={isLoading}
+        isLoadingMore={isLoadingMore}
+        autoScrollToBottom={true}
+        className="flex-1 p-4 space-y-3"
+      >
+        {messages.length === 0 && !isLoading ? (
           /* Empty State - No messages placeholder */
           <div className="text-center text-gray-500 py-8">
             <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="currentColor" viewBox="0 0 24 24">
@@ -311,8 +406,20 @@ const ChatRoom = ({ jobId, className = "" }) => {
             );
           })
         )}
-        <div ref={messagesEndRef} />
-      </div>
+      </InfiniteScrollMessages>
+
+      {/* Typing Indicator - Shows when other users are typing */}
+      {typingUsers && typingUsers.length > 0 && (
+        <div className="px-4 py-2 text-sm text-gray-500 italic">
+          {typingUsers.length === 1 ? (
+            <span>{typingUsers[0].username} is typing...</span>
+          ) : typingUsers.length === 2 ? (
+            <span>{typingUsers[0].username} and {typingUsers[1].username} are typing...</span>
+          ) : (
+            <span>Several people are typing...</span>
+          )}
+        </div>
+      )}
 
       {/* Message Input Area - Send new messages */}
       <div className="border-t border-gray-200 p-4">

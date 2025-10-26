@@ -7,5 +7,5 @@ router.register(r'rooms', views.ChatRoomViewSet, basename='chatroom')
 router.register(r'messages', views.MessageViewSet, basename='message')
 
 urlpatterns = [
-    path('api/chat/', include(router.urls)),
+    path('', include(router.urls)),
 ]

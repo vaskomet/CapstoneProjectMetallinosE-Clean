@@ -37,14 +37,18 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         - Clients: see their own jobs
         - Cleaners: see available jobs (open_for_bids) + their assigned jobs
         - Admins: see all jobs
+        
+        Query Parameters:
+        - status: Filter by job status (e.g., 'completed', 'in_progress', 'open_for_bids')
         """
         user = self.request.user
         
         # Admin users can see all jobs for management purposes
         if hasattr(user, 'role') and user.role == 'admin':
-            return CleaningJob.objects.all().select_related(
+            queryset = CleaningJob.objects.all().select_related(
                 'client', 'cleaner', 'property', 'accepted_bid'
             ).prefetch_related('bids__cleaner')
+        
         
         # Cleaners can see available jobs (open_for_bids) within their service areas + their assigned jobs
         elif hasattr(user, 'role') and user.role == 'cleaner':
@@ -142,7 +146,7 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
                     elif area.area_type == 'postal_codes' and area.postal_codes:
                         location_filter |= Q(property__postal_code__in=area.postal_codes)
                 
-                return CleaningJob.objects.filter(
+                queryset = CleaningJob.objects.filter(
                     Q(cleaner=user) |  # Their assigned jobs
                     (Q(status='open_for_bids') & location_filter)  # Available jobs in their areas
                 ).select_related(
@@ -150,7 +154,7 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
                 ).prefetch_related('bids__cleaner')
             else:
                 # If cleaner has no service areas, show only their assigned jobs
-                return CleaningJob.objects.filter(
+                queryset = CleaningJob.objects.filter(
                     cleaner=user
                 ).select_related(
                     'client', 'cleaner', 'property', 'accepted_bid'
@@ -158,11 +162,18 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         
         # Clients can only see their own jobs
         else:
-            return CleaningJob.objects.filter(
+            queryset = CleaningJob.objects.filter(
                 client=user
             ).select_related(
                 'client', 'cleaner', 'property', 'accepted_bid'
             ).prefetch_related('bids__cleaner')
+        
+        # Apply status filter if provided in query parameters
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
     
     def get_serializer_class(self):
         """

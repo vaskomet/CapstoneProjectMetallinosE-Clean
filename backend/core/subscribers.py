@@ -158,6 +158,12 @@ class EventSubscriber:
                 self.handle_job_cancelled(data)
             elif event_type == 'job_status_changed':
                 self.handle_job_status_changed(data)
+            elif event_type == 'bid_received':
+                self.handle_bid_received(data)
+            elif event_type == 'bid_accepted':
+                self.handle_bid_accepted_notification(data)
+            elif event_type == 'bid_rejected':
+                self.handle_bid_rejected(data)
             
             # Send WebSocket update for all job events
             self.send_websocket_update('job_updates', {
@@ -278,6 +284,67 @@ class EventSubscriber:
         # This is mainly for WebSocket updates, notifications handled by specific events
         pass
     
+    def handle_bid_received(self, data: Dict[str, Any]) -> None:
+        """Handle bid received event - notify the job owner (client)."""
+        client_id = data.get('client_id')
+        
+        if client_id:
+            try:
+                client = User.objects.get(id=client_id)
+                self.create_notification(
+                    user=client,
+                    template_key='bid_received',
+                    context={
+                        'job_title': data.get('job_title', 'Your Job'),
+                        'cleaner_name': data.get('cleaner_name', 'A cleaner'),
+                        'bid_amount': data.get('bid_amount', '0'),
+                        'job_id': data.get('job_id')
+                    }
+                )
+                logger.info(f"Created bid_received notification for client {client_id}")
+            except User.DoesNotExist:
+                logger.error(f"Client not found: {client_id}")
+    
+    def handle_bid_accepted_notification(self, data: Dict[str, Any]) -> None:
+        """Handle bid accepted event - notify the cleaner."""
+        cleaner_id = data.get('cleaner_id')
+        
+        if cleaner_id:
+            try:
+                cleaner = User.objects.get(id=cleaner_id)
+                self.create_notification(
+                    user=cleaner,
+                    template_key='bid_accepted',
+                    context={
+                        'job_title': data.get('job_title', 'Job'),
+                        'client_name': data.get('client_name', 'Client'),
+                        'bid_amount': data.get('bid_amount', '0'),
+                        'job_id': data.get('job_id')
+                    }
+                )
+                logger.info(f"Created bid_accepted notification for cleaner {cleaner_id}")
+            except User.DoesNotExist:
+                logger.error(f"Cleaner not found: {cleaner_id}")
+    
+    def handle_bid_rejected(self, data: Dict[str, Any]) -> None:
+        """Handle bid rejected event - notify the cleaner."""
+        cleaner_id = data.get('cleaner_id')
+        
+        if cleaner_id:
+            try:
+                cleaner = User.objects.get(id=cleaner_id)
+                self.create_notification(
+                    user=cleaner,
+                    template_key='bid_rejected',
+                    context={
+                        'job_title': data.get('job_title', 'Job'),
+                        'job_id': data.get('job_id')
+                    }
+                )
+                logger.info(f"Created bid_rejected notification for cleaner {cleaner_id}")
+            except User.DoesNotExist:
+                logger.error(f"Cleaner not found: {cleaner_id}")
+    
     def handle_notification_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Handle notification-specific events."""
         # Future implementation for notification-specific events
@@ -387,12 +454,14 @@ class EventSubscriber:
         """
         try:
             if self.channel_layer:
+                group_name = f'notifications_{user_id}'
                 async_to_sync(self.channel_layer.group_send)(
-                    f'user_{user_id}',
+                    group_name,
                     {
-                        'type': 'send_notification',
+                        'type': 'notification_message',
                         'notification': notification_data
                     }
                 )
+                logger.info(f"Sent WebSocket notification to group: {group_name}")
         except Exception as e:
             logger.error(f"Error sending user notification: {e}")

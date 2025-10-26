@@ -3,11 +3,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import serializers
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserRegistrationSerializer, UserSerializer, PasswordChangeSerializer, ServiceAreaSerializer
 from .models import ServiceArea
+from .location_utils import find_cleaners_by_location, find_cleaners_by_city, find_cleaners_by_postal_code
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
@@ -178,3 +180,81 @@ class ServiceAreaDetailView(generics.RetrieveUpdateDestroyAPIView):
         else:
             return ServiceArea.objects.none()
 
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_cleaners_by_location(request):
+    """
+    Search for cleaners who service a specific location.
+    
+    Query parameters:
+        - latitude (required): Latitude of location
+        - longitude (required): Longitude of location
+        - max_radius (optional): Maximum search radius (default: 50)
+        - unit (optional): 'km' for kilometers (default) or 'mi' for miles
+        - city (optional): City name for city-based search
+        - state (optional): State/province
+        - postal_code (optional): Postal/ZIP code
+    
+    Returns:
+        List of cleaners with their service areas and distance information
+    """
+    # Get search parameters
+    latitude = request.query_params.get('latitude')
+    longitude = request.query_params.get('longitude')
+    max_radius = request.query_params.get('max_radius', 50)
+    unit = request.query_params.get('unit', 'km')  # Default to km for Athens
+    city = request.query_params.get('city')
+    state = request.query_params.get('state')
+    postal_code = request.query_params.get('postal_code')
+    
+    cleaners = []
+    
+    # Priority 1: Lat/lng search (most accurate)
+    if latitude and longitude:
+        try:
+            lat = float(latitude)
+            lng = float(longitude)
+            radius = float(max_radius)
+            cleaners = find_cleaners_by_location(lat, lng, radius, unit=unit)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Invalid latitude, longitude, or max_radius'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    # Priority 2: Postal code search
+    elif postal_code:
+        cleaners = find_cleaners_by_postal_code(postal_code)
+    
+    # Priority 3: City search
+    elif city:
+        cleaners = find_cleaners_by_city(city, state)
+    
+    else:
+        return Response(
+            {'error': 'Please provide latitude/longitude, city, or postal_code'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Serialize cleaners with additional info
+    results = []
+    for cleaner in cleaners:
+        cleaner_data = UserSerializer(cleaner).data
+        cleaner_data['service_areas'] = ServiceAreaSerializer(
+            cleaner.service_areas.filter(is_active=True), 
+            many=True
+        ).data
+        
+        # Add distance if available (attribute name is generic regardless of unit)
+        if hasattr(cleaner, 'distance_miles') and cleaner.distance_miles is not None:
+            distance_key = f'distance_{unit}'  # 'distance_km' or 'distance_mi'
+            cleaner_data[distance_key] = round(cleaner.distance_miles, 2)
+        
+        results.append(cleaner_data)
+    
+    return Response({
+        'count': len(results),
+        'cleaners': results,
+        'unit': unit
+    })

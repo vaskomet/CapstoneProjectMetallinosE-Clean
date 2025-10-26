@@ -61,7 +61,7 @@
  * ```
  */
 
-import { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { useUser } from './UserContext';
 
 const WebSocketContext = createContext();
@@ -128,7 +128,7 @@ export const useWebSocket = () => {
  * ```
  */
 export const WebSocketProvider = ({ children }) => {
-  const { user, token } = useUser();
+  const { user } = useUser();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
@@ -149,10 +149,29 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const connectNotificationWebSocket = () => {
-    if (!user || !token) return;
+    if (!user) {
+      console.log('⚠️ No user object available for WebSocket connection');
+      return;
+    }
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.log('⚠️ No token available for WebSocket connection');
+      return;
+    }
+
+    console.log('👤 User object:', user);
+    console.log('🆔 User ID:', user.id);
+
+    if (!user.id) {
+      console.error('❌ User object missing ID! Please logout and login again.');
+      console.log('📋 User object keys:', Object.keys(user));
+      return;
+    }
 
     try {
       const wsUrl = getWebSocketUrl(`notifications/${user.id}/`);
+      console.log('🔌 WebSocket connecting to:', wsUrl);
       // Add token as query parameter for authentication
       const wsUrlWithToken = `${wsUrl}?token=${token}`;
       notificationWs.current = new WebSocket(wsUrlWithToken);
@@ -193,13 +212,20 @@ export const WebSocketProvider = ({ children }) => {
     }
   };
 
-  const connectChatWebSocket = (roomId) => {
-    if (!user || !token) return null;
+  const connectChatWebSocket = useCallback((roomId) => {
+    if (!user) return null;
+
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      console.log('⚠️ No token available for chat WebSocket');
+      return null;
+    }
 
     try {
       const wsUrl = getWebSocketUrl(`job_chat/${roomId}/`);
       // Add token as query parameter for authentication
       const wsUrlWithToken = `${wsUrl}?token=${token}`;
+      console.log(`💬 Creating chat WebSocket for room ${roomId}`);
       const ws = new WebSocket(wsUrlWithToken);
 
       ws.onopen = () => {
@@ -207,6 +233,7 @@ export const WebSocketProvider = ({ children }) => {
       };
 
       ws.onmessage = (event) => {
+        console.log(`💬 Chat message received in room ${roomId}:`, event.data);
         const data = JSON.parse(event.data);
         handleChatMessage(roomId, data);
       };
@@ -224,7 +251,7 @@ export const WebSocketProvider = ({ children }) => {
       console.error('💬 Failed to connect chat WebSocket:', error);
       return null;
     }
-  };
+  }, [user]); // Only recreate when user changes
 
   const handleNotificationMessage = (data) => {
     switch (data.type) {
@@ -276,6 +303,11 @@ export const WebSocketProvider = ({ children }) => {
         setChatMessages(prev => ({
           ...prev,
           [roomId]: [...(prev[roomId] || []), data.message]
+        }));
+        
+        // Trigger custom event for other components to listen to
+        window.dispatchEvent(new CustomEvent('newChatMessage', { 
+          detail: { roomId, message: data.message } 
         }));
         break;
 
@@ -332,10 +364,54 @@ export const WebSocketProvider = ({ children }) => {
     sendNotificationAction('get_unread_count');
   };
 
+  // Fetch initial notifications from REST API
+  const fetchNotifications = async () => {
+    const token = localStorage.getItem('access_token');
+    console.log('🔍 fetchNotifications called - user:', !!user, 'token:', !!token);
+    if (!user || !token) {
+      console.log('⚠️ Skipping fetch - missing user or token');
+      return;
+    }
+
+    try {
+      console.log('🌐 Fetching notifications from API...');
+      const response = await fetch('http://localhost:8000/api/notifications/', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📥 Fetched existing notifications:', data.length, data);
+        setNotifications(data);
+        
+        // Calculate unread count from fetched notifications
+        const unreadCount = data.filter(n => !n.is_read).length;
+        setUnreadCount(unreadCount);
+        console.log('📊 Unread count:', unreadCount);
+      } else {
+        console.error('❌ Failed to fetch notifications:', response.status, await response.text());
+      }
+    } catch (error) {
+      console.error('❌ Error fetching notifications:', error);
+    }
+  };
+
   // Connect to notification WebSocket when user logs in
   useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    console.log('🔄 WebSocket useEffect triggered - user:', !!user, 'token:', !!token);
     if (user && token) {
+      console.log('✅ User and token present, initializing...');
+      // First, fetch existing notifications from REST API
+      fetchNotifications();
+      
+      // Then, connect to WebSocket for real-time updates
       connectNotificationWebSocket();
+    } else {
+      console.log('❌ Missing user or token, skipping initialization');
     }
 
     return () => {
@@ -346,7 +422,7 @@ export const WebSocketProvider = ({ children }) => {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [user, token]);
+  }, [user]);
 
   // Cleanup on unmount
   useEffect(() => {
