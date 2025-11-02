@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Payment, StripeAccount, Transaction, Refund
+from .models import Payment, StripeAccount, Transaction, Refund, PayoutRequest
 from django.contrib.auth import get_user_model
 from cleaning_jobs.models import CleaningJob
 
@@ -373,3 +373,211 @@ class StripeConnectOnboardingSerializer(serializers.Serializer):
             data['refresh_url'] = f"{request.scheme}://{request.get_host()}/cleaner/stripe-connect/refresh"
         
         return data
+
+
+class PayoutRequestSerializer(serializers.ModelSerializer):
+    """
+    Serializer for PayoutRequest model.
+    Provides payout request information for cleaners and admins.
+    """
+    cleaner_name = serializers.SerializerMethodField()
+    cleaner_email = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
+    bank_account_last4 = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PayoutRequest
+        fields = [
+            'id',
+            'cleaner',
+            'cleaner_name',
+            'cleaner_email',
+            'amount',
+            'status',
+            'stripe_transfer_id',
+            'stripe_payout_id',
+            'approved_by',
+            'approved_by_name',
+            'approved_at',
+            'rejection_reason',
+            'requested_at',
+            'processed_at',
+            'notes',
+            'bank_account_last4',
+        ]
+        read_only_fields = [
+            'id',
+            'stripe_transfer_id',
+            'stripe_payout_id',
+            'approved_by',
+            'approved_at',
+            'requested_at',
+            'processed_at',
+        ]
+    
+    def get_cleaner_name(self, obj):
+        profile = getattr(obj.cleaner, 'cleaner_profile', None)
+        if profile and profile.company_name:
+            return profile.company_name
+        return f"{obj.cleaner.first_name} {obj.cleaner.last_name}".strip() or obj.cleaner.username
+    
+    def get_cleaner_email(self, obj):
+        return obj.cleaner.email
+    
+    def get_approved_by_name(self, obj):
+        if obj.approved_by:
+            return f"{obj.approved_by.first_name} {obj.approved_by.last_name}".strip() or obj.approved_by.username
+        return None
+    
+    def get_bank_account_last4(self, obj):
+        try:
+            stripe_account = StripeAccount.objects.get(cleaner=obj.cleaner)
+            return stripe_account.bank_account_last4
+        except StripeAccount.DoesNotExist:
+            return None
+
+
+class PayoutBalanceSerializer(serializers.Serializer):
+    """
+    Serializer for cleaner payout balance information.
+    Shows available, pending, and total earnings.
+    """
+    available_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    pending_balance = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_earnings = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_payouts = serializers.DecimalField(max_digits=10, decimal_places=2)
+    stripe_account_id = serializers.CharField(allow_null=True)
+    stripe_onboarding_complete = serializers.BooleanField()
+    can_request_payout = serializers.BooleanField()
+
+
+class JobEarningsSerializer(serializers.Serializer):
+    """
+    Serializer for individual job earnings breakdown.
+    Shows job details, amounts, and platform fees.
+    """
+    job_id = serializers.IntegerField()
+    job_title = serializers.CharField()
+    client_name = serializers.CharField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    platform_fee = serializers.DecimalField(max_digits=10, decimal_places=2)
+    platform_fee_percentage = serializers.DecimalField(max_digits=5, decimal_places=2)
+    cleaner_payout = serializers.DecimalField(max_digits=10, decimal_places=2)
+    status = serializers.CharField()
+    paid_at = serializers.DateTimeField()
+    hours_since_paid = serializers.IntegerField()
+    is_available_for_payout = serializers.BooleanField()
+
+
+class PaymentHistorySerializer(serializers.ModelSerializer):
+    """
+    Serializer for payment history.
+    Shows all payments the user was involved in:
+    - Clients see payments they made (with cleaner info)
+    - Cleaners see payments they received (with client info)
+    - Admins see all payments (with both)
+    """
+    job_title = serializers.SerializerMethodField()
+    job_address = serializers.SerializerMethodField()
+    job_bedrooms = serializers.SerializerMethodField()
+    job_bathrooms = serializers.SerializerMethodField()
+    cleaner_name = serializers.SerializerMethodField()
+    client_name = serializers.SerializerMethodField()
+    can_request_refund = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Payment
+        fields = [
+            'id',
+            'job',
+            'job_title',
+            'job_address',
+            'job_bedrooms',
+            'job_bathrooms',
+            'client',
+            'client_name',
+            'cleaner',
+            'cleaner_name',
+            'amount',
+            'platform_fee',
+            'status',
+            'payment_method_type',
+            'payment_method_last4',
+            'payment_method_brand',
+            'refunded_amount',
+            'refund_reason',
+            'created_at',
+            'paid_at',
+            'refunded_at',
+            'can_request_refund',
+        ]
+    
+    def get_job_title(self, obj):
+        if obj.job and obj.job.services_description:
+            # Truncate long descriptions
+            desc = obj.job.services_description
+            return desc[:50] + "..." if len(desc) > 50 else desc
+        return "Cleaning Service"
+    
+    def get_job_address(self, obj):
+        if obj.job and obj.job.property:
+            prop = obj.job.property
+            # Build address from components (matching Property.__str__)
+            return f"{prop.address_line1}, {prop.city}, {prop.state}"
+        return None
+    
+    def get_job_bedrooms(self, obj):
+        # Property model doesn't have bedrooms field
+        return None
+    
+    def get_job_bathrooms(self, obj):
+        # Property model doesn't have bathrooms field
+        return None
+    
+    def get_client_name(self, obj):
+        if not obj.client:
+            return None
+        return f"{obj.client.first_name} {obj.client.last_name}".strip() or obj.client.username
+    
+    def get_cleaner_name(self, obj):
+        if not obj.cleaner:
+            return None
+        profile = getattr(obj.cleaner, 'cleaner_profile', None)
+        if profile and profile.company_name:
+            return profile.company_name
+        return f"{obj.cleaner.first_name} {obj.cleaner.last_name}".strip() or obj.cleaner.username
+    
+    def get_can_request_refund(self, obj):
+        return obj.can_be_refunded() if hasattr(obj, 'can_be_refunded') else False
+
+
+class AdminFinancialSummarySerializer(serializers.Serializer):
+    """
+    Serializer for admin financial dashboard summary.
+    Shows platform-wide financial metrics.
+    """
+    # Payment metrics
+    total_payments = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payments_this_month = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payments_this_year = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payment_count = serializers.IntegerField()
+    
+    # Platform revenue (fees)
+    platform_revenue_total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    platform_revenue_this_month = serializers.DecimalField(max_digits=10, decimal_places=2)
+    platform_revenue_this_year = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Payout metrics
+    total_payouts = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payouts_this_month = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payouts_this_year = serializers.DecimalField(max_digits=10, decimal_places=2)
+    payout_count = serializers.IntegerField()
+    
+    # Pending payout requests
+    pending_payout_requests = serializers.IntegerField()
+    pending_payout_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Refund metrics
+    total_refunds = serializers.DecimalField(max_digits=10, decimal_places=2)
+    refund_count = serializers.IntegerField()
+    pending_refund_requests = serializers.IntegerField()

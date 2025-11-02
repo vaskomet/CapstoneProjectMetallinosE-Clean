@@ -19,6 +19,9 @@ import CompletedJobsDashboard from './components/CompletedJobsDashboard';
 import Profile from './components/Profile';
 import ChatPage from './pages/ChatPage';
 import FindCleaners from './pages/FindCleaners';
+import Payments from './pages/Payments';
+import Payouts from './pages/Payouts';
+import AdminFinancials from './pages/AdminFinancials';
 // import PaymentHistory from './pages/PaymentHistory.jsx';
 // import StripeConnect from './pages/StripeConnect.jsx';
 import './utils/globalSetup'; // Initialize global error handling
@@ -106,14 +109,30 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
-                {/* <Route 
+                <Route 
                   path="/payments" 
                   element={
                     <ProtectedRoute>
-                      <PaymentHistory />
+                      <Payments />
                     </ProtectedRoute>
                   } 
-                /> */}
+                />
+                <Route 
+                  path="/payouts" 
+                  element={
+                    <ProtectedRoute>
+                      <Payouts />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/admin/financials" 
+                  element={
+                    <ProtectedRoute>
+                      <AdminFinancials />
+                    </ProtectedRoute>
+                  } 
+                />
                 {/* <Route 
                   path="/stripe-connect" 
                   element={

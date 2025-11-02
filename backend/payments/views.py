@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 import stripe
 
-from .models import Payment, StripeAccount, Transaction, Refund
+from .models import Payment, StripeAccount, Transaction, Refund, PayoutRequest
 from .serializers import (
     PaymentSerializer,
     PaymentIntentCreateSerializer,
@@ -16,7 +16,12 @@ from .serializers import (
     StripeAccountSerializer,
     TransactionSerializer,
     RefundSerializer,
-    StripeConnectOnboardingSerializer
+    StripeConnectOnboardingSerializer,
+    PayoutRequestSerializer,
+    PayoutBalanceSerializer,
+    JobEarningsSerializer,
+    PaymentHistorySerializer,
+    AdminFinancialSummarySerializer
 )
 from cleaning_jobs.models import CleaningJob
 from decimal import Decimal
@@ -510,3 +515,581 @@ class RefundListView(generics.ListAPIView):
             ).select_related(
                 'payment', 'requested_by', 'approved_by'
             ).order_by('-created_at')
+
+
+# ============================================================
+# PAYOUT REQUEST VIEWS
+# ============================================================
+
+class PayoutRequestListView(generics.ListAPIView):
+    """
+    List payout requests for cleaners or admins.
+    
+    GET /api/payouts/requests/
+    
+    Cleaner: sees only their own requests
+    Admin: sees all requests, can filter by status
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PayoutRequestSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.role == 'admin':
+            # Admin sees all requests
+            queryset = PayoutRequest.objects.all()
+            
+            # Filter by status if provided
+            status_filter = self.request.query_params.get('status')
+            if status_filter:
+                queryset = queryset.filter(status=status_filter)
+            
+            # Filter by cleaner if provided
+            cleaner_id = self.request.query_params.get('cleaner')
+            if cleaner_id:
+                queryset = queryset.filter(cleaner_id=cleaner_id)
+            
+            return queryset.select_related('cleaner', 'approved_by').order_by('-requested_at')
+        
+        elif user.role == 'cleaner':
+            # Cleaner sees only their own requests
+            return PayoutRequest.objects.filter(
+                cleaner=user
+            ).select_related('approved_by').order_by('-requested_at')
+        
+        else:
+            # Clients shouldn't access this
+            return PayoutRequest.objects.none()
+
+
+class PayoutRequestCreateView(views.APIView):
+    """
+    Create a new payout request for a cleaner.
+    
+    POST /api/payouts/request/
+    Body: { "amount": 250.00 }
+    
+    Validates:
+    - User is a cleaner
+    - Has Stripe account set up
+    - Requested amount <= available balance
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        
+        # Only cleaners can request payouts
+        if user.role != 'cleaner':
+            return Response(
+                {'error': 'Only cleaners can request payouts'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Check if cleaner has Stripe account set up
+        try:
+            stripe_account = StripeAccount.objects.get(cleaner=user)
+            if not stripe_account.is_ready_for_payouts():
+                return Response(
+                    {'error': 'Please complete your Stripe account setup before requesting payouts'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except StripeAccount.DoesNotExist:
+            return Response(
+                {'error': 'Please set up your Stripe account before requesting payouts'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get requested amount
+        try:
+            requested_amount = Decimal(str(request.data.get('amount', 0)))
+        except:
+            return Response(
+                {'error': 'Invalid amount'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if requested_amount <= 0:
+            return Response(
+                {'error': 'Amount must be greater than 0'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate available balance
+        from datetime import timedelta
+        from django.db.models import Sum
+        
+        # Jobs completed more than 24 hours ago
+        cutoff_time = timezone.now() - timedelta(hours=24)
+        total_earned = Payment.objects.filter(
+            cleaner=user,
+            status='succeeded',
+            paid_at__lte=cutoff_time
+        ).aggregate(total=Sum('cleaner_payout'))['total'] or Decimal('0.00')
+        
+        # Subtract already paid out amounts
+        total_paid_out = PayoutRequest.objects.filter(
+            cleaner=user,
+            status__in=['completed', 'processing', 'approved']
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        available_balance = total_earned - total_paid_out
+        
+        # Validate requested amount
+        if requested_amount > available_balance:
+            return Response(
+                {
+                    'error': f'Insufficient balance. Available: ${available_balance:.2f}',
+                    'available_balance': str(available_balance),
+                    'requested_amount': str(requested_amount)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create payout request
+        payout_request = PayoutRequest.objects.create(
+            cleaner=user,
+            amount=requested_amount,
+            status='pending'
+        )
+        
+        serializer = PayoutRequestSerializer(payout_request)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PayoutRequestDetailView(views.APIView):
+    """
+    Get, approve, or reject a specific payout request.
+    
+    GET /api/payouts/requests/<id>/
+    POST /api/payouts/requests/<id>/approve/
+    POST /api/payouts/requests/<id>/reject/
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk):
+        user = request.user
+        
+        try:
+            payout_request = PayoutRequest.objects.select_related(
+                'cleaner', 'approved_by'
+            ).get(pk=pk)
+        except PayoutRequest.DoesNotExist:
+            return Response(
+                {'error': 'Payout request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check permissions
+        if user.role == 'admin':
+            # Admin can see all
+            pass
+        elif user.role == 'cleaner' and payout_request.cleaner == user:
+            # Cleaner can see their own
+            pass
+        else:
+            return Response(
+                {'error': 'You do not have permission to view this payout request'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = PayoutRequestSerializer(payout_request)
+        return Response(serializer.data)
+
+
+class PayoutRequestApproveView(views.APIView):
+    """
+    Approve a payout request (admin only).
+    
+    POST /api/payouts/requests/<id>/approve/
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        user = request.user
+        
+        if user.role != 'admin':
+            return Response(
+                {'error': 'Only admins can approve payout requests'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            payout_request = PayoutRequest.objects.get(pk=pk)
+        except PayoutRequest.DoesNotExist:
+            return Response(
+                {'error': 'Payout request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if payout_request.status != 'pending':
+            return Response(
+                {'error': f'Cannot approve request with status: {payout_request.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Approve the request
+        payout_request.approve(user)
+        
+        # TODO: Initiate actual Stripe transfer here
+        # For now, just mark as approved - Stripe integration can be added later
+        
+        serializer = PayoutRequestSerializer(payout_request)
+        return Response(serializer.data)
+
+
+class PayoutRequestRejectView(views.APIView):
+    """
+    Reject a payout request (admin only).
+    
+    POST /api/payouts/requests/<id>/reject/
+    Body: { "reason": "Insufficient balance" }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, pk):
+        user = request.user
+        
+        if user.role != 'admin':
+            return Response(
+                {'error': 'Only admins can reject payout requests'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            payout_request = PayoutRequest.objects.get(pk=pk)
+        except PayoutRequest.DoesNotExist:
+            return Response(
+                {'error': 'Payout request not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if payout_request.status != 'pending':
+            return Response(
+                {'error': f'Cannot reject request with status: {payout_request.status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        reason = request.data.get('reason', 'No reason provided')
+        payout_request.reject(user, reason)
+        
+        serializer = PayoutRequestSerializer(payout_request)
+        return Response(serializer.data)
+
+
+# ============================================================
+# PAYOUT BALANCE & EARNINGS VIEWS
+# ============================================================
+
+class PayoutBalanceView(views.APIView):
+    """
+    Get cleaner's payout balance information.
+    
+    GET /api/payouts/balance/
+    
+    Returns:
+    - available_balance: amount ready to withdraw
+    - pending_balance: amount in 24hr hold
+    - total_earnings: lifetime earnings
+    - stripe_account_status
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        if user.role != 'cleaner':
+            return Response(
+                {'error': 'Only cleaners can view payout balance'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from datetime import timedelta
+        from django.db.models import Sum
+        
+        # Check Stripe account status
+        try:
+            stripe_account = StripeAccount.objects.get(cleaner=user)
+            stripe_account_id = stripe_account.stripe_account_id
+            stripe_onboarding_complete = stripe_account.is_ready_for_payouts()
+        except StripeAccount.DoesNotExist:
+            stripe_account_id = None
+            stripe_onboarding_complete = False
+        
+        # Calculate available balance (24+ hours old)
+        cutoff_time = timezone.now() - timedelta(hours=24)
+        available_payments = Payment.objects.filter(
+            cleaner=user,
+            status='succeeded',
+            paid_at__lte=cutoff_time
+        ).aggregate(total=Sum('cleaner_payout'))['total'] or Decimal('0.00')
+        
+        # Calculate pending balance (<24 hours old)
+        pending_payments = Payment.objects.filter(
+            cleaner=user,
+            status='succeeded',
+            paid_at__gt=cutoff_time
+        ).aggregate(total=Sum('cleaner_payout'))['total'] or Decimal('0.00')
+        
+        # Calculate total earnings (all time)
+        total_earnings = Payment.objects.filter(
+            cleaner=user,
+            status='succeeded'
+        ).aggregate(total=Sum('cleaner_payout'))['total'] or Decimal('0.00')
+        
+        # Calculate total already paid out
+        total_payouts = PayoutRequest.objects.filter(
+            cleaner=user,
+            status__in=['completed', 'processing', 'approved']
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        
+        available_balance = available_payments - total_payouts
+        
+        data = {
+            'available_balance': available_balance,
+            'pending_balance': pending_payments,
+            'total_earnings': total_earnings,
+            'total_payouts': total_payouts,
+            'stripe_account_id': stripe_account_id,
+            'stripe_onboarding_complete': stripe_onboarding_complete,
+            'can_request_payout': stripe_onboarding_complete and available_balance > 0
+        }
+        
+        serializer = PayoutBalanceSerializer(data)
+        return Response(serializer.data)
+
+
+class JobEarningsView(generics.ListAPIView):
+    """
+    List cleaner's job earnings breakdown.
+    
+    GET /api/payouts/earnings/
+    
+    Shows each job with:
+    - Job details
+    - Amount earned
+    - Platform fee (18%)
+    - Net payout
+    - Status (available/pending/paid out)
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = JobEarningsSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.role != 'cleaner':
+            return []
+        
+        from datetime import timedelta
+        
+        payments = Payment.objects.filter(
+            cleaner=user,
+            status='succeeded'
+        ).select_related('job', 'client').order_by('-paid_at')
+        
+        # Build earnings data
+        earnings_data = []
+        cutoff_time = timezone.now() - timedelta(hours=24)
+        
+        for payment in payments:
+            hours_since_paid = int((timezone.now() - payment.paid_at).total_seconds() / 3600)
+            is_available = payment.paid_at <= cutoff_time
+            
+            # Calculate platform fee percentage
+            platform_fee_pct = (payment.platform_fee / payment.amount * 100) if payment.amount > 0 else Decimal('0.00')
+            
+            # Get job title from services_description
+            if payment.job and payment.job.services_description:
+                desc = payment.job.services_description
+                job_title = desc[:50] + "..." if len(desc) > 50 else desc
+            else:
+                job_title = "Cleaning Service"
+            
+            client_name = f"{payment.client.first_name} {payment.client.last_name}".strip() if payment.client else "Unknown"
+            
+            earnings_data.append({
+                'job_id': payment.job.id if payment.job else None,
+                'job_title': job_title,
+                'client_name': client_name,
+                'amount': payment.amount,
+                'platform_fee': payment.platform_fee,
+                'platform_fee_percentage': platform_fee_pct,
+                'cleaner_payout': payment.cleaner_payout,
+                'status': 'available' if is_available else 'pending',
+                'paid_at': payment.paid_at,
+                'hours_since_paid': hours_since_paid,
+                'is_available_for_payout': is_available
+            })
+        
+        return earnings_data
+    
+    def list(self, request, *args, **kwargs):
+        data = self.get_queryset()
+        serializer = self.get_serializer(data, many=True)
+        return Response(serializer.data)
+
+
+# ============================================================
+# PAYMENT HISTORY VIEWS (CLIENT)
+# ============================================================
+
+class PaymentHistoryView(generics.ListAPIView):
+    """
+    List user's payment history.
+    
+    GET /api/payments/history/
+    
+    Shows all payments the user was involved in:
+    - Clients: payments they made
+    - Cleaners: payments they received
+    - Admins: all payments
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = PaymentHistorySerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Admins can see all payments
+        if user.role == 'admin':
+            queryset = Payment.objects.all()
+        # Clients see payments they made
+        elif user.role == 'client':
+            queryset = Payment.objects.filter(client=user)
+        # Cleaners see payments they received
+        elif user.role == 'cleaner':
+            queryset = Payment.objects.filter(cleaner=user)
+        else:
+            return Payment.objects.none()
+        
+        # Exclude pending/failed duplicates for the same job
+        # Only show succeeded payments, OR pending/processing if no succeeded payment exists for that job
+        queryset = queryset.select_related('job', 'cleaner', 'client', 'job__property').order_by('-created_at')
+        
+        # Filter out duplicate pending payments:
+        # For each job, if there's a 'succeeded' payment, hide any 'pending' or 'failed' payments
+        from django.db.models import Q, Exists, OuterRef
+        succeeded_for_job = Payment.objects.filter(
+            job=OuterRef('job'),
+            status='succeeded'
+        )
+        
+        # Exclude payments that are pending/failed AND have a succeeded payment for the same job
+        queryset = queryset.exclude(
+            Q(status__in=['pending', 'failed']) &
+            Exists(succeeded_for_job)
+        )
+        
+        # Filter by status if provided
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
+
+
+# ============================================================
+# ADMIN FINANCIAL DASHBOARD VIEWS
+# ============================================================
+
+class AdminFinancialSummaryView(views.APIView):
+    """
+    Get financial summary for admin dashboard.
+    
+    GET /api/admin/financials/summary/
+    
+    Returns:
+    - Total payments processed
+    - Platform revenue (fees collected)
+    - Total payouts made
+    - Pending payout requests
+    - Refund metrics
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        if user.role != 'admin':
+            return Response(
+                {'error': 'Only admins can access financial dashboard'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from django.db.models import Sum, Count
+        from datetime import datetime, timedelta
+        
+        # Date ranges
+        now = timezone.now()
+        first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        first_day_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Payment metrics
+        all_payments = Payment.objects.filter(status='succeeded')
+        total_payments = all_payments.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payments_this_month = all_payments.filter(
+            paid_at__gte=first_day_of_month
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payments_this_year = all_payments.filter(
+            paid_at__gte=first_day_of_year
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payment_count = all_payments.count()
+        
+        # Platform revenue (fees)
+        platform_revenue_total = all_payments.aggregate(
+            total=Sum('platform_fee')
+        )['total'] or Decimal('0.00')
+        platform_revenue_this_month = all_payments.filter(
+            paid_at__gte=first_day_of_month
+        ).aggregate(total=Sum('platform_fee'))['total'] or Decimal('0.00')
+        platform_revenue_this_year = all_payments.filter(
+            paid_at__gte=first_day_of_year
+        ).aggregate(total=Sum('platform_fee'))['total'] or Decimal('0.00')
+        
+        # Payout metrics
+        completed_payouts = PayoutRequest.objects.filter(status='completed')
+        total_payouts = completed_payouts.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payouts_this_month = completed_payouts.filter(
+            processed_at__gte=first_day_of_month
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payouts_this_year = completed_payouts.filter(
+            processed_at__gte=first_day_of_year
+        ).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        payout_count = completed_payouts.count()
+        
+        # Pending payout requests
+        pending_requests = PayoutRequest.objects.filter(status='pending')
+        pending_payout_requests = pending_requests.count()
+        pending_payout_amount = pending_requests.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        
+        # Refund metrics
+        completed_refunds = Refund.objects.filter(status='completed')
+        total_refunds = completed_refunds.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+        refund_count = completed_refunds.count()
+        pending_refund_requests = Refund.objects.filter(status='pending').count()
+        
+        data = {
+            'total_payments': total_payments,
+            'payments_this_month': payments_this_month,
+            'payments_this_year': payments_this_year,
+            'payment_count': payment_count,
+            'platform_revenue_total': platform_revenue_total,
+            'platform_revenue_this_month': platform_revenue_this_month,
+            'platform_revenue_this_year': platform_revenue_this_year,
+            'total_payouts': total_payouts,
+            'payouts_this_month': payouts_this_month,
+            'payouts_this_year': payouts_this_year,
+            'payout_count': payout_count,
+            'pending_payout_requests': pending_payout_requests,
+            'pending_payout_amount': pending_payout_amount,
+            'total_refunds': total_refunds,
+            'refund_count': refund_count,
+            'pending_refund_requests': pending_refund_requests,
+        }
+        
+        serializer = AdminFinancialSummarySerializer(data)
+        return Response(serializer.data)

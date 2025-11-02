@@ -510,3 +510,127 @@ class Refund(models.Model):
 
     def __str__(self):
         return f"Refund #{self.id} - Payment #{self.payment.id} - ${self.amount} ({self.status})"
+
+
+class PayoutRequest(models.Model):
+    """
+    Manual payout requests from cleaners.
+    Cleaners can request payouts of their available balance at any time.
+    Admins must approve payout requests before processing.
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('rejected', 'Rejected'),
+        ('failed', 'Failed'),
+    ]
+    
+    id = models.AutoField(primary_key=True)
+    cleaner = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='payout_requests',
+        help_text="The cleaner requesting the payout"
+    )
+    amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Amount the cleaner is requesting to withdraw"
+    )
+    status = models.CharField(
+        max_length=20, 
+        choices=STATUS_CHOICES, 
+        default='pending',
+        db_index=True
+    )
+    
+    # Stripe integration
+    stripe_transfer_id = models.CharField(
+        max_length=255, 
+        blank=True,
+        help_text="Stripe transfer ID when funds are sent to cleaner"
+    )
+    stripe_payout_id = models.CharField(
+        max_length=255, 
+        blank=True,
+        help_text="Stripe payout ID when funds reach cleaner's bank"
+    )
+    
+    # Admin approval workflow
+    approved_by = models.ForeignKey(
+        User, 
+        null=True, 
+        blank=True, 
+        on_delete=models.SET_NULL, 
+        related_name='approved_payout_requests',
+        help_text="Admin who approved this payout"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(
+        blank=True,
+        help_text="Reason for rejection if payout was denied"
+    )
+    
+    # Timestamps
+    requested_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="When the payout was actually processed by Stripe"
+    )
+    
+    # Metadata
+    notes = models.TextField(
+        blank=True,
+        help_text="Internal admin notes about this payout"
+    )
+    
+    class Meta:
+        db_table = 'payout_requests'
+        ordering = ['-requested_at']
+        indexes = [
+            models.Index(fields=['cleaner', 'status']),
+            models.Index(fields=['status', 'requested_at']),
+        ]
+    
+    def __str__(self):
+        return f"Payout Request #{self.id} - {self.cleaner.email} - ${self.amount} ({self.status})"
+    
+    def approve(self, admin_user):
+        """Approve the payout request"""
+        from django.utils import timezone
+        self.status = 'approved'
+        self.approved_by = admin_user
+        self.approved_at = timezone.now()
+        self.save()
+    
+    def reject(self, admin_user, reason):
+        """Reject the payout request"""
+        self.status = 'rejected'
+        self.approved_by = admin_user
+        self.rejection_reason = reason
+        self.save()
+    
+    def mark_processing(self):
+        """Mark payout as processing (Stripe transfer initiated)"""
+        self.status = 'processing'
+        self.save()
+    
+    def mark_completed(self, stripe_transfer_id=None, stripe_payout_id=None):
+        """Mark payout as completed"""
+        from django.utils import timezone
+        self.status = 'completed'
+        self.processed_at = timezone.now()
+        if stripe_transfer_id:
+            self.stripe_transfer_id = stripe_transfer_id
+        if stripe_payout_id:
+            self.stripe_payout_id = stripe_payout_id
+        self.save()
+    
+    def mark_failed(self, reason):
+        """Mark payout as failed"""
+        self.status = 'failed'
+        self.rejection_reason = reason
+        self.save()

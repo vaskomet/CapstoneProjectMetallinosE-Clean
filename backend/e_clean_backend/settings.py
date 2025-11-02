@@ -11,9 +11,20 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env.dev.local (for local development)
+# This file is in the project root (one level up from backend/)
+env_path = BASE_DIR.parent / '.env.dev.local'
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ Loaded environment variables from {env_path}")
+else:
+    print(f"⚠️  Warning: {env_path} not found, using system environment variables")
 
 
 # Quick-start development settings - unsuitable for production
@@ -92,8 +103,6 @@ WSGI_APPLICATION = 'e_clean_backend.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
-import os
 
 # Use PostgreSQL if environment variables are set (Docker), otherwise SQLite
 if os.environ.get('POSTGRES_DB'):

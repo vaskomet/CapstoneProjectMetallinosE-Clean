@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Payment, StripeAccount, Transaction, Refund
+from .models import Payment, StripeAccount, Transaction, Refund, PayoutRequest
 
 
 @admin.register(Payment)
@@ -98,3 +98,53 @@ class RefundAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'processed_at')
         }),
     )
+
+
+@admin.register(PayoutRequest)
+class PayoutRequestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'cleaner', 'amount', 'status', 'requested_at', 'approved_by', 'processed_at']
+    list_filter = ['status', 'requested_at', 'approved_at']
+    search_fields = ['cleaner__username', 'cleaner__email', 'stripe_transfer_id']
+    readonly_fields = [
+        'stripe_transfer_id',
+        'stripe_payout_id',
+        'requested_at',
+        'approved_at',
+        'processed_at'
+    ]
+    
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('cleaner', 'amount', 'status')
+        }),
+        ('Stripe Information', {
+            'fields': ('stripe_transfer_id', 'stripe_payout_id')
+        }),
+        ('Approval Workflow', {
+            'fields': ('approved_by', 'approved_at', 'rejection_reason')
+        }),
+        ('Timestamps', {
+            'fields': ('requested_at', 'processed_at')
+        }),
+        ('Admin Notes', {
+            'fields': ('notes',)
+        }),
+    )
+    
+    actions = ['approve_payouts', 'reject_payouts']
+    
+    def approve_payouts(self, request, queryset):
+        """Bulk approve payout requests"""
+        pending_requests = queryset.filter(status='pending')
+        for payout_request in pending_requests:
+            payout_request.approve(request.user)
+        self.message_user(request, f"Approved {pending_requests.count()} payout requests")
+    approve_payouts.short_description = "Approve selected payout requests"
+    
+    def reject_payouts(self, request, queryset):
+        """Bulk reject payout requests"""
+        pending_requests = queryset.filter(status='pending')
+        for payout_request in pending_requests:
+            payout_request.reject(request.user, "Bulk rejection by admin")
+        self.message_user(request, f"Rejected {pending_requests.count()} payout requests")
+    reject_payouts.short_description = "Reject selected payout requests"
