@@ -29,7 +29,12 @@ const MapClickHandler = ({ onLocationSelect }) => {
 
 /**
  * Service Area Manager Component
- * Allows cleaners to manage their working areas with map interface
+ * 
+ * Allows cleaners to define their service areas using GPS location + radius model.
+ * This matches the client search system (GPS + radius) for consistent location matching.
+ * 
+ * Cleaners select a center point on the map and choose a radius (1-50 km).
+ * Jobs and client searches within that radius will match this service area.
  */
 const ServiceAreaManager = () => {
   const [serviceAreas, setServiceAreas] = useState([]);
@@ -118,25 +123,29 @@ const ServiceAreaManager = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (formData.area_type === 'radius') {
-      if (!formData.center_latitude || !formData.center_longitude) {
-        toast.error('Please select a location on the map');
-        return;
-      }
-      if (!formData.area_name.trim()) {
-        setFormData(prev => ({
-          ...prev,
-          area_name: `${formData.radius_miles} miles around selected location`
-        }));
-      }
+    // Validation for radius-based service area
+    if (!formData.center_latitude || !formData.center_longitude) {
+      toast.error('Please select a location on the map');
+      return;
+    }
+    if (!formData.area_name.trim()) {
+      setFormData(prev => ({
+        ...prev,
+        area_name: `${radiusOptions.find(r => r.value === parseFloat(formData.radius_miles))?.label || formData.radius_miles + ' mi'} around selected location`
+      }));
     }
 
     try {
       const dataToSend = {
-        ...formData,
-        center_latitude: formData.center_latitude ? parseFloat(formData.center_latitude).toFixed(8) : null,
-        center_longitude: formData.center_longitude ? parseFloat(formData.center_longitude).toFixed(8) : null,
-        radius_miles: formData.radius_miles ? parseFloat(formData.radius_miles) : null
+        area_name: formData.area_name || `${radiusOptions.find(r => r.value === parseFloat(formData.radius_miles))?.label || formData.radius_miles + ' mi'} around selected location`,
+        area_type: 'radius', // Always radius
+        city: '', // Not used for radius
+        state: '', // Not used for radius
+        center_latitude: parseFloat(formData.center_latitude).toFixed(8),
+        center_longitude: parseFloat(formData.center_longitude).toFixed(8),
+        radius_miles: parseFloat(formData.radius_miles),
+        max_travel_time_minutes: parseInt(formData.max_travel_time_minutes),
+        is_active: formData.is_active
       };
 
       await serviceAreasAPI.create(dataToSend);
@@ -315,117 +324,70 @@ const ServiceAreaManager = () => {
           <h4 className="text-lg font-medium text-gray-900 mb-4">Add New Service Area</h4>
           
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Area Type is now fixed to radius - no dropdown needed */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Area Type
+                Service Radius
               </label>
               <select
-                name="area_type"
-                value={formData.area_type}
+                name="radius_miles"
+                value={formData.radius_miles}
                 onChange={handleInputChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="radius">Radius from location</option>
-                <option value="city">City/Town</option>
+                {radiusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Define how far from your center location you're willing to travel for jobs
+              </p>
             </div>
 
-            {formData.area_type === 'radius' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Service Radius
-                  </label>
-                  <select
-                    name="radius_miles"
-                    value={formData.radius_miles}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {radiusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Click on the map to select your center location
-                  </label>
-                  <div className="h-64 border rounded-lg overflow-hidden">
-                    <MapContainer
-                      center={[mapCenter.lat, mapCenter.lng]}
-                      zoom={12}
-                      style={{ height: '100%', width: '100%' }}
-                    >
-                      <TileLayer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                      />
-                      <MapClickHandler onLocationSelect={handleMapClick} />
-                      
-                      {formData.center_latitude && formData.center_longitude && (
-                        <>
-                          <Marker
-                            position={[parseFloat(formData.center_latitude), parseFloat(formData.center_longitude)]}
-                            icon={createCustomIcon('#3b82f6')}
-                          />
-                          <Circle
-                            center={[parseFloat(formData.center_latitude), parseFloat(formData.center_longitude)]}
-                            radius={milesToMeters(formData.radius_miles)}
-                            pathOptions={{
-                              color: '#3b82f6',
-                              fillColor: '#3b82f6',
-                              fillOpacity: 0.1,
-                              weight: 2
-                            }}
-                          />
-                        </>
-                      )}
-                    </MapContainer>
-                  </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Click on the map to select your center location
+              </label>
+              <div className="h-64 border rounded-lg overflow-hidden">
+                <MapContainer
+                  center={[mapCenter.lat, mapCenter.lng]}
+                  zoom={12}
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  <MapClickHandler onLocationSelect={handleMapClick} />
+                  
                   {formData.center_latitude && formData.center_longitude && (
-                    <p className="text-sm text-gray-600 mt-1">
-                      Selected: {parseFloat(formData.center_latitude).toFixed(6)}, {parseFloat(formData.center_longitude).toFixed(6)}
-                    </p>
+                    <>
+                      <Marker
+                        position={[parseFloat(formData.center_latitude), parseFloat(formData.center_longitude)]}
+                        icon={createCustomIcon('#3b82f6')}
+                      />
+                      <Circle
+                        center={[parseFloat(formData.center_latitude), parseFloat(formData.center_longitude)]}
+                        radius={milesToMeters(formData.radius_miles)}
+                        pathOptions={{
+                          color: '#3b82f6',
+                          fillColor: '#3b82f6',
+                          fillOpacity: 0.1,
+                          weight: 2
+                        }}
+                      />
+                    </>
                   )}
-                </div>
-              </>
-            )}
-
-            {formData.area_type === 'city' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    City
-                  </label>
-                  <input
-                    type="text"
-                    name="city"
-                    value={formData.city}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter city name"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    State/Region
-                  </label>
-                  <input
-                    type="text"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter state/region"
-                  />
-                </div>
+                </MapContainer>
               </div>
-            )}
+              {formData.center_latitude && formData.center_longitude && (
+                <p className="text-sm text-gray-600 mt-1">
+                  Selected: {parseFloat(formData.center_latitude).toFixed(6)}, {parseFloat(formData.center_longitude).toFixed(6)}
+                </p>
+              )}
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">

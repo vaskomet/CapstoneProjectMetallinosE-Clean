@@ -1,27 +1,27 @@
 /**
  * CleanerSearch Component
  * 
- * Search for cleaners by location with various search methods:
- * - Current GPS location with radius
- * - City and state
- * - Postal/ZIP code
+ * Search for cleaners by GPS location with radius matching.
+ * Uses browser's geolocation API to find nearby cleaners who service your area.
  * 
- * Displays results with distance, service areas, and ratings
+ * Matches against cleaner service areas (center point + radius model).
+ * Displays results with distance, service areas, and direct messaging option.
  */
 
 import React, { useState } from 'react';
 import { cleanerSearchAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 
-const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = true }) => {
-  const [searchMethod, setSearchMethod] = useState('gps'); // 'gps', 'city', 'postal'
+const CleanerSearch = ({ 
+  onSelectCleaners, 
+  selectedCleaners = [], 
+  multiSelect = true,
+  onMessageCleaner = null // Optional: callback when clicking message button for individual cleaner
+}) => {
   const [searchParams, setSearchParams] = useState({
     latitude: '',
     longitude: '',
-    max_radius: 15,  // Athens metro area - reasonable default (15 miles ≈ 24 km)
-    city: 'Athens',  // Default to Athens
-    state: 'Attica', // Default to Attica region
-    postal_code: ''
+    max_radius: 15  // Default 15km radius (reasonable for metro areas)
   });
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -47,10 +47,32 @@ const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = 
       });
     } catch (error) {
       console.error('Geolocation error:', error);
-      toast.error('Unable to get your location. Please check permissions.');
+      toast.error('Unable to get your location. Try the test location button below.');
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleUseTestLocation = async () => {
+    // Use Athens center (Syntagma Square) for testing
+    const testLocation = {
+      latitude: 37.9755,
+      longitude: 23.7348
+    };
+    
+    setSearchParams(prev => ({
+      ...prev,
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude
+    }));
+    toast.success('Using test location: Athens (Syntagma Square)');
+    
+    // Auto-search with test location
+    await handleSearch({
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude,
+      max_radius: searchParams.max_radius
+    });
   };
 
   const handleSearch = async (customParams = null) => {
@@ -58,33 +80,16 @@ const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = 
     setHasSearched(true);
     
     try {
-      const params = customParams || {};
+      const params = customParams || {
+        latitude: searchParams.latitude,
+        longitude: searchParams.longitude,
+        max_radius: searchParams.max_radius
+      };
       
-      // Build search params based on method
-      if (searchMethod === 'gps') {
-        params.latitude = params.latitude || searchParams.latitude;
-        params.longitude = params.longitude || searchParams.longitude;
-        params.max_radius = params.max_radius || searchParams.max_radius;
-        
-        if (!params.latitude || !params.longitude) {
-          toast.error('Please get your current location first');
-          return;
-        }
-      } else if (searchMethod === 'city') {
-        params.city = searchParams.city;
-        params.state = searchParams.state;
-        
-        if (!params.city) {
-          toast.error('Please enter a city name');
-          return;
-        }
-      } else if (searchMethod === 'postal') {
-        params.postal_code = searchParams.postal_code;
-        
-        if (!params.postal_code) {
-          toast.error('Please enter a postal code');
-          return;
-        }
+      if (!params.latitude || !params.longitude) {
+        toast.error('Please use "Get My Location" button first');
+        setIsSearching(false);
+        return;
       }
       
       const response = await cleanerSearchAPI.searchByLocation(params);
@@ -125,153 +130,80 @@ const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = 
 
   return (
     <div className="space-y-6">
-      {/* Search Method Selector */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-3">
-          Search Method
-        </label>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setSearchMethod('gps')}
-            className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-              searchMethod === 'gps'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            📍 GPS Location
-          </button>
-          <button
-            onClick={() => setSearchMethod('city')}
-            className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-              searchMethod === 'city'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            🏙️ City
-          </button>
-          <button
-            onClick={() => setSearchMethod('postal')}
-            className={`flex-1 px-4 py-2 rounded-lg transition-colors ${
-              searchMethod === 'postal'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            📮 ZIP Code
-          </button>
+      {/* Search Panel */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Search by Your Location</h3>
+          <p className="text-sm text-gray-600">
+            Find cleaners who service areas near you (uses GPS + radius matching)
+          </p>
         </div>
-      </div>
-
-      {/* Search Inputs */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        {searchMethod === 'gps' && (
-          <div className="space-y-4">
-            <div className="flex items-center space-x-4">
+        
+        <div className="space-y-4">
+          {/* Step 1: Get Location */}
+          <div>
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={handleGetCurrentLocation}
                 disabled={isSearching}
-                className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center space-x-2"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                <span>{isSearching ? 'Getting Location...' : 'Use My Location'}</span>
+                <span>{isSearching ? 'Getting Location...' : 'Use My GPS'}</span>
               </button>
               
-              {searchParams.latitude && searchParams.longitude && (
-                <div className="text-sm text-gray-600">
-                  📍 {searchParams.latitude.toFixed(4)}, {searchParams.longitude.toFixed(4)}
-                </div>
-              )}
+              <button
+                onClick={handleUseTestLocation}
+                disabled={isSearching}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                <span>Test (Athens)</span>
+              </button>
             </div>
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Search Radius (km)
-              </label>
-              <input
-                type="range"
-                min="5"
-                max="50"
-                step="5"
-                value={searchParams.max_radius}
-                onChange={(e) => setSearchParams({ ...searchParams, max_radius: e.target.value })}
-                className="w-full"
-              />
-              <div className="flex justify-between text-sm text-gray-600 mt-1">
-                <span>5 km</span>
-                <span className="font-medium text-blue-600">{searchParams.max_radius} km (~{Math.round(searchParams.max_radius * 0.621371)} mi)</span>
-                <span>50 km (Athens Metro)</span>
+            {searchParams.latitude && searchParams.longitude && (
+              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-sm text-green-800">
+                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="font-medium">Location found:</span>
+                  <span>{searchParams.latitude.toFixed(6)}, {searchParams.longitude.toFixed(6)}</span>
+                </div>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                💡 Athens center to Piraeus: ~10km | Athens to Marathon: ~42km
-              </p>
-            </div>
+            )}
           </div>
-        )}
-
-        {searchMethod === 'city' && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                City *
-              </label>
-              <input
-                type="text"
-                value={searchParams.city}
-                onChange={(e) => setSearchParams({ ...searchParams, city: e.target.value })}
-                placeholder="e.g., Athens, Piraeus, Glyfada"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                💡 Common areas: Kolonaki, Kifisia, Maroussi, Glyfada, Piraeus
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Region
-              </label>
-              <input
-                type="text"
-                value={searchParams.state}
-                onChange={(e) => setSearchParams({ ...searchParams, state: e.target.value })}
-                placeholder="Attica"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-        )}
-
-        {searchMethod === 'postal' && (
+          
+          {/* Step 2: Adjust Radius */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Postal Code *
+              Search Radius (km)
             </label>
             <input
-              type="text"
-              value={searchParams.postal_code}
-              onChange={(e) => setSearchParams({ ...searchParams, postal_code: e.target.value })}
-              placeholder="e.g., 10671 (Kolonaki), 16674 (Glyfada)"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              type="range"
+              min="5"
+              max="50"
+              step="5"
+              value={searchParams.max_radius}
+              onChange={(e) => setSearchParams({ ...searchParams, max_radius: e.target.value })}
+              className="w-full"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              💡 Athens postal codes typically start with 10xxx-11xxx (central) or 15xxx-19xxx (suburbs)
+            <div className="flex justify-between text-sm text-gray-600 mt-1">
+              <span>5 km</span>
+              <span className="font-medium text-blue-600">{searchParams.max_radius} km (~{Math.round(searchParams.max_radius * 0.621371)} mi)</span>
+              <span>50 km (Athens Metro)</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              💡 Athens center to Piraeus: ~10km | Athens to Marathon: ~42km
             </p>
           </div>
-        )}
-
-        {searchMethod !== 'gps' && (
-          <button
-            onClick={() => handleSearch()}
-            disabled={isSearching}
-            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
-          >
-            {isSearching ? 'Searching...' : '🔍 Search for Cleaners'}
-          </button>
-        )}
+        </div>
       </div>
 
       {/* Search Results */}
@@ -299,15 +231,17 @@ const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = 
                 return (
                   <div
                     key={cleaner.id}
-                    className={`px-4 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${
+                    className={`px-4 py-4 hover:bg-gray-50 transition-colors ${
                       isSelected ? 'bg-blue-50 border-l-4 border-blue-600' : ''
                     }`}
-                    onClick={() => handleToggleSelect(cleaner)}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                      <div 
+                        className={`flex-1 ${multiSelect && onSelectCleaners ? 'cursor-pointer' : ''}`}
+                        onClick={() => multiSelect && handleToggleSelect(cleaner)}
+                      >
                         <div className="flex items-center space-x-3 mb-2">
-                          {onSelectCleaners && (
+                          {multiSelect && onSelectCleaners && (
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -346,6 +280,23 @@ const CleanerSearch = ({ onSelectCleaners, selectedCleaners = [], multiSelect = 
                           </div>
                         )}
                       </div>
+                      
+                      {/* Quick Message Button */}
+                      {onMessageCleaner && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMessageCleaner(cleaner);
+                          }}
+                          className="ml-4 flex-shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
+                          title={`Message ${cleaner.first_name}`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          <span>Message</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

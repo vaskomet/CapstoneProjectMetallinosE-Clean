@@ -53,6 +53,15 @@ export const chatLog = {
   },
 
   /**
+   * Info events (only in debug mode)
+   */
+  info: (message, data) => {
+    if (DEBUG) {
+      console.log('ℹ️', message, data !== undefined ? data : '');
+    }
+  },
+
+  /**
    * Warning events (only in debug mode)
    */
   warn: (message, data) => {

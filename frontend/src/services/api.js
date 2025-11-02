@@ -1174,12 +1174,25 @@ export const cleanerSearchAPI = {
           });
         },
         (error) => {
-          reject(error);
+          // Enhanced error messages
+          let errorMessage = 'Unable to get your location';
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Location access denied. Please enable location permissions in your browser.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'Location information unavailable. Try the test location button.';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'Location request timed out. Try the test location button or check your device location settings.';
+              break;
+          }
+          reject(new Error(errorMessage));
         },
         {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
+          enableHighAccuracy: false,  // Use faster, less accurate location (WiFi/IP-based)
+          timeout: 30000,  // Increased to 30 seconds
+          maximumAge: 300000  // Accept cached location up to 5 minutes old
         }
       );
     });

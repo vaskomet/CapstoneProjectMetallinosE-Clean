@@ -1,23 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { chatAPI, cleanerSearchAPI } from '../../services/api';
+import { Link } from 'react-router-dom';
+import { chatAPI } from '../../services/api';
 import { useUser } from '../../contexts/UserContext';
 import ChatRoom from './ChatRoom';
 
 /**
  * DirectMessages Component
  * 
- * Displays list of DM conversations and allows starting new DMs
+ * Displays list of DM conversations
  * Reuses ChatRoom component for actual message display
+ * Users can start new conversations via the "Find Cleaners" page
  */
 const DirectMessages = () => {
   const { user } = useUser();
   const [conversations, setConversations] = useState([]);
   const [selectedRoom, setSelectedRoom] = useState(null);
-  const [showUserSearch, setShowUserSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
 
   // Load existing DM conversations
   useEffect(() => {
@@ -36,66 +34,11 @@ const DirectMessages = () => {
     }
   };
 
-  // Search for users to message
-  const searchUsers = async (query) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      setSearching(true);
-      // Use cleaner search API - adapt as needed for your user search
-      const response = await cleanerSearchAPI.searchByLocation({
-        city: query  // Simplified - you may want a dedicated user search endpoint
-      });
-      
-      // Filter out current user
-      const users = response.cleaners?.filter(u => u.id !== user?.id) || [];
-      setSearchResults(users);
-    } catch (error) {
-      console.error('User search failed:', error);
-      setSearchResults([]);
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  // Start DM with selected user
-  const startDM = async (otherUser) => {
-    try {
-      const result = await chatAPI.startDirectMessage(otherUser.id);
-      
-      // Add to conversations if newly created
-      if (result.created) {
-        setConversations([result.room, ...conversations]);
-      }
-      
-      // Open the room
-      setSelectedRoom(result.room);
-      setShowUserSearch(false);
-      setSearchQuery('');
-      setSearchResults([]);
-    } catch (error) {
-      console.error('Failed to start DM:', error);
-    }
-  };
-
   // Get other participant's info from DM room
   const getOtherParticipant = (room) => {
     if (!room.participants || !user) return null;
     return room.participants.find(p => p.id !== user.id);
   };
-
-  // Handle debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery) {
-        searchUsers(searchQuery);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
 
   // If room selected, show ChatRoom component
   if (selectedRoom) {
@@ -132,71 +75,19 @@ const DirectMessages = () => {
       <div className="bg-white border-b px-4 py-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Direct Messages</h2>
-          <button
-            onClick={() => setShowUserSearch(!showUserSearch)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            + New Message
-          </button>
+          {user?.role === 'client' && (
+            <Link
+              to="/find-cleaners"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+              </svg>
+              <span>Find Cleaners</span>
+            </Link>
+          )}
         </div>
       </div>
-
-      {/* User Search Modal/Panel */}
-      {showUserSearch && (
-        <div className="bg-white border-b p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-semibold">Start New Conversation</h3>
-            <button
-              onClick={() => {
-                setShowUserSearch(false);
-                setSearchQuery('');
-                setSearchResults([]);
-              }}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-          </div>
-          
-          <input
-            type="text"
-            placeholder="Search users by name or location..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-
-          {searching && (
-            <div className="mt-2 text-center text-gray-500">Searching...</div>
-          )}
-
-          {searchResults.length > 0 && (
-            <div className="mt-2 max-h-64 overflow-y-auto">
-              {searchResults.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => startDM(user)}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-100 border-b last:border-b-0 transition"
-                >
-                  <div className="font-medium">
-                    {user.first_name} {user.last_name}
-                  </div>
-                  <div className="text-sm text-gray-600">
-                    {user.email}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {!searching && searchQuery && searchResults.length === 0 && (
-            <div className="mt-2 text-center text-gray-500">
-              No users found
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Conversation List */}
       <div className="flex-1 overflow-y-auto">
@@ -205,9 +96,21 @@ const DirectMessages = () => {
             <div className="text-gray-500">Loading conversations...</div>
           </div>
         ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <p className="mb-2">No conversations yet</p>
-            <p className="text-sm">Click "New Message" to start chatting</p>
+          <div className="flex flex-col items-center justify-center h-64 text-gray-500 px-4">
+            <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <p className="text-lg font-medium mb-2">No conversations yet</p>
+            {user?.role === 'client' ? (
+              <Link
+                to="/find-cleaners"
+                className="text-sm text-blue-600 hover:text-blue-700 underline"
+              >
+                Find cleaners to start chatting
+              </Link>
+            ) : (
+              <p className="text-sm">Your conversations will appear here</p>
+            )}
           </div>
         ) : (
           conversations.map((room) => {

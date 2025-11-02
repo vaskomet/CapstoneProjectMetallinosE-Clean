@@ -85,19 +85,6 @@ def find_cleaners_by_location(latitude, longitude, max_radius=50, unit='km'):
             if area.cleaner_id not in cleaner_distances or distance_in_unit < cleaner_distances[area.cleaner_id]:
                 cleaner_distances[area.cleaner_id] = distance_in_unit
     
-    # Also include city-based service areas (simplified - match by city name)
-    # This would need geocoding in production
-    city_areas = ServiceArea.objects.filter(
-        is_active=True,
-        area_type='city',
-    ).select_related('cleaner')
-    
-    for area in city_areas:
-        matching_cleaners.add(area.cleaner_id)
-        # City-based areas don't have precise distance
-        if area.cleaner_id not in cleaner_distances:
-            cleaner_distances[area.cleaner_id] = None
-    
     # Get cleaners and add distance info
     cleaners = User.objects.filter(
         id__in=matching_cleaners,

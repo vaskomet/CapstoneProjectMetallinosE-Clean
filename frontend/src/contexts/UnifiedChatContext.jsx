@@ -13,6 +13,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { useUser } from './UserContext';
+import { chatAPI } from '../services/api';
 import chatLog from '../utils/chatLogger';
 
 const UnifiedChatContext = createContext();
@@ -360,6 +361,30 @@ export const UnifiedChatProvider = ({ children }) => {
   }, [typingUsers]);
   
   /**
+   * Create or get existing direct message room with a user
+   */
+  const createDirectMessage = useCallback(async (userId) => {
+    try {
+      chatLog.debug('Creating DM with user', { userId });
+      const response = await chatAPI.startDirectMessage(userId);
+      
+      if (response.room) {
+        chatLog.info(`DM ${response.created ? 'created' : 'retrieved'} with user ${userId}`, response.room);
+        
+        // Refresh room list to include the new DM
+        refreshRoomList();
+        
+        return response.room;
+      }
+      
+      return null;
+    } catch (error) {
+      chatLog.error('Failed to create DM', error);
+      throw error;
+    }
+  }, [refreshRoomList]);
+  
+  /**
    * Calculate total unread count across all rooms
    */
   const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
@@ -395,6 +420,7 @@ export const UnifiedChatProvider = ({ children }) => {
     subscribeToRoom,
     unsubscribeFromRoom,
     refreshRoomList,
+    createDirectMessage,
     
     // Messaging
     messages,

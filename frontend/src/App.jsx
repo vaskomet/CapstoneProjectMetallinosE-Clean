@@ -18,6 +18,7 @@ import CleaningJobsPool from './components/CleaningJobsPool';
 import CompletedJobsDashboard from './components/CompletedJobsDashboard';
 import Profile from './components/Profile';
 import ChatPage from './pages/ChatPage';
+import FindCleaners from './pages/FindCleaners';
 // import PaymentHistory from './pages/PaymentHistory.jsx';
 // import StripeConnect from './pages/StripeConnect.jsx';
 import './utils/globalSetup'; // Initialize global error handling
@@ -78,6 +79,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <DirectMessages />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/find-cleaners" 
+                  element={
+                    <ProtectedRoute>
+                      <FindCleaners />
                     </ProtectedRoute>
                   } 
                 />
