@@ -83,6 +83,9 @@ class CleaningJobSerializer(serializers.ModelSerializer):
     before_photos = serializers.SerializerMethodField()
     after_photos = serializers.SerializerMethodField()
     
+    # Payment information
+    payment_info = serializers.SerializerMethodField()
+    
     # Eco-impact metrics managed by views or Celery tasks
     eco_impact_metrics = serializers.JSONField(read_only=True)
 
@@ -108,6 +111,7 @@ class CleaningJobSerializer(serializers.ModelSerializer):
             'accepted_bid',
             'before_photos',
             'after_photos',
+            'payment_info',
             'cleaner_confirmed_at',
             'client_review',
             'client_rating',
@@ -143,6 +147,35 @@ class CleaningJobSerializer(serializers.ModelSerializer):
         """Get all after photos for this job"""
         after_photos = obj.photos.filter(photo_type='after')
         return JobPhotoSerializer(after_photos, many=True, context=self.context).data
+    
+    def get_payment_info(self, obj):
+        """
+        Get payment information for this job.
+        Returns payment status, amount, and method details if payment exists.
+        """
+        try:
+            # Get the latest payment for this job
+            payment = obj.payments.order_by('-created_at').first()
+            if payment:
+                return {
+                    'id': payment.id,
+                    'status': payment.status,
+                    'amount': str(payment.amount),
+                    'platform_fee': str(payment.platform_fee),
+                    'cleaner_payout': str(payment.cleaner_payout),
+                    'payment_method': {
+                        'type': payment.payment_method_type,
+                        'brand': payment.payment_method_brand,
+                        'last4': payment.payment_method_last4,
+                    } if payment.payment_method_type else None,
+                    'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+                    'created_at': payment.created_at.isoformat(),
+                }
+            return None
+        except Exception as e:
+            # Log error but don't fail the serialization
+            print(f"Error getting payment info for job {obj.id}: {e}")
+            return None
 
 
 class CleaningJobCreateSerializer(serializers.ModelSerializer):

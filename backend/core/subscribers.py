@@ -47,11 +47,13 @@ class EventSubscriber:
             redis_url = getattr(settings, 'REDIS_URL', None)
             
             if redis_url:
+                # For Pub/Sub, we need longer timeouts since listen() blocks indefinitely
                 self.redis_client = redis.from_url(
                     redis_url,
                     decode_responses=True,
                     socket_connect_timeout=10,
-                    socket_timeout=10
+                    socket_timeout=None,  # No timeout for blocking Pub/Sub operations
+                    socket_keepalive=True  # Keep connection alive
                 )
             else:
                 self.redis_client = redis.Redis(
@@ -60,7 +62,8 @@ class EventSubscriber:
                     db=getattr(settings, 'REDIS_DB', 0),
                     decode_responses=True,
                     socket_connect_timeout=10,
-                    socket_timeout=10
+                    socket_timeout=None,  # No timeout for blocking Pub/Sub operations
+                    socket_keepalive=True  # Keep connection alive
                 )
             
             self.channel_layer = get_channel_layer()
@@ -82,29 +85,73 @@ class EventSubscriber:
         
         Note:
             This method runs indefinitely, processing events as they arrive.
+            Includes automatic reconnection on connection loss.
         """
-        pubsub = self.redis_client.pubsub()
+        retry_count = 0
+        max_retries = 5
+        retry_delay = 5  # seconds
         
-        try:
-            # Subscribe to topic channels
-            for topic in topics:
-                channel = f'topic:{topic}'
-                pubsub.subscribe(channel)
-                logger.info(f"Subscribed to topic: {topic}")
-            
-            logger.info(f"Event subscriber ready, listening to topics: {topics}")
-            
-            # Process messages indefinitely
-            for message in pubsub.listen():
-                if message['type'] == 'message':
-                    self.process_event(message['data'])
+        while retry_count < max_retries:
+            pubsub = None
+            try:
+                # Create new pubsub instance
+                pubsub = self.redis_client.pubsub(ignore_subscribe_messages=True)
+                
+                # Subscribe to topic channels
+                for topic in topics:
+                    channel = f'topic:{topic}'
+                    pubsub.subscribe(channel)
+                    logger.info(f"Subscribed to topic: {topic}")
+                
+                logger.info(f"Event subscriber ready, listening to topics: {topics}")
+                
+                # Reset retry count on successful connection
+                retry_count = 0
+                
+                # Process messages indefinitely
+                for message in pubsub.listen():
+                    if message['type'] == 'message':
+                        try:
+                            self.process_event(message['data'])
+                        except Exception as e:
+                            logger.error(f"Error processing message: {e}", exc_info=True)
+                            # Continue processing other messages even if one fails
+                            
+            except KeyboardInterrupt:
+                logger.info("Event subscriber stopped by user")
+                break
+                
+            except redis.ConnectionError as e:
+                retry_count += 1
+                logger.error(f"Redis connection lost (attempt {retry_count}/{max_retries}): {e}")
+                
+                if retry_count < max_retries:
+                    logger.info(f"Reconnecting in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, 60)  # Exponential backoff, max 60s
+                else:
+                    logger.error("Max reconnection attempts reached, giving up")
+                    raise
                     
-        except KeyboardInterrupt:
-            logger.info("Event subscriber stopped by user")
-        except Exception as e:
-            logger.error(f"Error in event subscription: {e}")
-        finally:
-            pubsub.close()
+            except Exception as e:
+                logger.error(f"Error in event subscription: {e}", exc_info=True)
+                retry_count += 1
+                
+                if retry_count < max_retries:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                else:
+                    raise
+                    
+            finally:
+                if pubsub:
+                    try:
+                        pubsub.close()
+                        logger.info("Pubsub connection closed")
+                    except Exception as e:
+                        logger.error(f"Error closing pubsub: {e}")
     
     def process_event(self, event_data: str) -> None:
         """

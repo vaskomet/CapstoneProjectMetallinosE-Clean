@@ -1,14 +1,13 @@
 """
-Unified Chat Consumer - Multiplexed WebSocket for All Chat Operations
+Unified Chat Consumer - Simplified Pub/Sub WebSocket
 
-This consumer implements a modern, scalable WebSocket architecture following
-industry best practices from Slack, Discord, and WhatsApp. It provides:
+This consumer implements a clean pub/sub architecture for real-time chat:
 
-- Single persistent connection per user (no multiple connections)
+- Single persistent connection per user
 - Multiplexed message routing (one connection handles multiple rooms)
-- Message type-based routing (room_list, messages, send_message, typing, etc.)
-- Real-time updates without REST polling
-- Efficient resource usage (1 connection vs N connections)
+- Pure pub/sub pattern: send → save → broadcast (no optimistic UI support)
+- WebSocket is single source of truth
+- Minimal logging (errors only)
 
 Architecture:
 - User connects once: ws/chat/
@@ -22,23 +21,21 @@ Message Types (Client → Server):
 - send_message: Send a message to a room
 - mark_read: Mark messages as read
 - typing: Send typing indicator
+- stop_typing: Stop typing indicator
 - get_room_list: Request list of user's rooms
 
 Message Types (Server → Client):
 - room_list: List of user's chat rooms
 - new_message: New message in subscribed room
-- message_sent: Confirmation of sent message
 - message_read: Message read receipt
 - typing: User typing indicator
 - room_updated: Room metadata changed
 - error: Error message
 
-Benefits:
-- Reduced server resources (1 connection per user)
-- Lower latency (no REST polling)
-- Better scalability (efficient connection pooling)
-- Cleaner code (single source of truth)
-- Real-time everything (rooms, messages, typing, read receipts)
+Simplified from original:
+- Removed optimistic UI support (no _tempId handling)
+- Removed excessive logging (only critical errors)
+- Pure pub/sub: all clients receive messages equally
 """
 
 import json
@@ -86,7 +83,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
         )
         
         await self.accept()
-        logger.info(f"WebSocket connected: user={self.user.username} (ID: {self.user_id})")
         
         # Send connection confirmation
         await self.send(text_data=json.dumps({
@@ -100,8 +96,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
         """
         Clean up when WebSocket connection closes.
         """
-        logger.info(f"WebSocket disconnecting: user={self.user.username if self.user else 'Unknown'} code={close_code}")
-        
         # Unsubscribe from all rooms
         for room_id in list(self.subscribed_rooms):
             await self._unsubscribe_from_room(room_id, silent=True)
@@ -185,8 +179,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
         
         self.subscribed_rooms.add(room_id)
         
-        logger.info(f"User {self.user.username} subscribed to room {room_id}")
-        
         # Send subscription confirmation
         await self.send(text_data=json.dumps({
             'type': 'subscribed',
@@ -224,14 +216,14 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
             "type": "send_message",
             "room_id": 123,
             "content": "Hello, world!",
-            "reply_to": 456,  # Optional
-            "_tempId": "temp_123..."  # Optional - for optimistic UI
+            "reply_to": 456  # Optional
         }
+        
+        Pure pub/sub pattern: save → broadcast to all subscribed clients
         """
         room_id = data.get('room_id')
         content = data.get('content', '').strip()
         reply_to_id = data.get('reply_to')
-        temp_id = data.get('_tempId')  # For optimistic UI confirmation
         
         if not room_id:
             await self._send_error("Missing 'room_id' field")
@@ -257,11 +249,7 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
         # Serialize message
         message_data = await self._serialize_message(message)
         
-        # Include temp_id for optimistic UI confirmation
-        if temp_id:
-            message_data['_tempId'] = temp_id
-        
-        # Broadcast to all users in the room
+        # Broadcast to all users in the room (pure pub/sub)
         room_group_name = f'chat_room_{room_id}'
         await self.channel_layer.group_send(
             room_group_name,
@@ -271,8 +259,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
                 'message': message_data
             }
         )
-        
-        logger.info(f"Message sent: room={room_id}, user={self.user.username}, content_length={len(content)}")
     
     async def handle_mark_read(self, data):
         """
@@ -603,8 +589,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
             self.subscribed_rooms.remove(room_id)
             
             if not silent:
-                logger.info(f"User {self.user.username} unsubscribed from room {room_id}")
-                
                 await self.send(text_data=json.dumps({
                     'type': 'unsubscribed',
                     'room_id': room_id,
@@ -622,7 +606,6 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
             error_data['room_id'] = room_id
         
         await self.send(text_data=json.dumps(error_data))
-        logger.warning(f"Error sent to {self.user.username}: {message}")
     
     def _get_timestamp(self):
         """Get current timestamp in ISO format."""

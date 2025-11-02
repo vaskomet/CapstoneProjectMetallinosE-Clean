@@ -4,6 +4,7 @@ from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 from .models import ChatRoom, Message, ChatParticipant
 from .serializers import MessageSerializer
+from notifications.utils import send_message_notification
 
 User = get_user_model()
 
@@ -175,10 +176,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Update denormalized last_message fields on room
             room.update_last_message(message)
             
-            # Increment unread count for other participants
+            # Increment unread count for other participants and send notifications
             participants = ChatParticipant.objects.filter(room=room).exclude(user=self.user)
             for participant in participants:
                 participant.increment_unread()
+                
+                # Send notification to the participant
+                try:
+                    # For general chat, job_id might not be available
+                    job_id = room.job_id if hasattr(room, 'job_id') and room.job_id else 0
+                    send_message_notification(
+                        recipient=participant.user,
+                        sender=self.user,
+                        job_id=job_id,
+                        message_preview=content
+                    )
+                except Exception as e:
+                    print(f"Error sending message notification: {e}")
             
             return message
         except Exception as e:
@@ -218,19 +232,47 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
 class JobChatConsumer(AsyncWebsocketConsumer):
     """
-    WebSocket consumer for job-specific chat rooms
+    WebSocket consumer for job-specific chat rooms.
+    Now supports per-bidder chats (multiple chats per job).
+    
+    URL: ws://domain/ws/chat/job/{job_id}/?bidder_id={bidder_id}
+    
+    Query param 'bidder_id' is required for clients to specify which bidder's chat
+    For cleaners, bidder_id defaults to themselves
     """
     
     async def connect(self):
         self.job_id = self.scope['url_route']['kwargs']['job_id']
-        self.room_group_name = f'job_chat_{self.job_id}'
         self.user = self.scope['user']
         
         if not self.user.is_authenticated:
             await self.close()
             return
         
-        # Check if user has access to this job chat
+        # Get bidder from query params
+        query_string = self.scope.get('query_string', b'').decode()
+        query_params = dict(param.split('=') for param in query_string.split('&') if '=' in param)
+        bidder_id = query_params.get('bidder_id')
+        
+        # Determine bidder based on user role
+        if hasattr(self.user, 'role') and self.user.role == 'cleaner':
+            # Cleaners are bidders for their own chats
+            self.bidder_id = self.user.id
+        elif bidder_id:
+            # Clients must specify which bidder they're chatting with
+            self.bidder_id = int(bidder_id)
+        else:
+            # Missing bidder_id for client
+            await self.send(text_data=json.dumps({
+                'error': 'bidder_id query parameter required for clients'
+            }))
+            await self.close()
+            return
+        
+        # Create unique room group name for this job-bidder pair
+        self.room_group_name = f'job_chat_{self.job_id}_bidder_{self.bidder_id}'
+        
+        # Check if user has access to this specific job-bidder chat
         if not await self.check_job_access():
             await self.close()
             return
@@ -243,7 +285,7 @@ class JobChatConsumer(AsyncWebsocketConsumer):
         
         await self.accept()
         
-        # Create or get chat room
+        # Create or get chat room for this job-bidder pair
         await self.ensure_chat_room_exists()
     
     async def disconnect(self, close_code):
@@ -319,43 +361,74 @@ class JobChatConsumer(AsyncWebsocketConsumer):
     
     @database_sync_to_async
     def check_job_access(self):
-        """Check if user has access to this job"""
-        from cleaning_jobs.models import CleaningJob
+        """
+        Restrict chat access after job is confirmed: only client and winning cleaner can access.
+        """
+        from cleaning_jobs.models import CleaningJob, JobBid
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
         try:
             job = CleaningJob.objects.get(id=self.job_id)
-            # User can access if they are the client or assigned cleaner
-            return (job.client == self.user or 
-                   job.cleaner == self.user or  # Fixed: changed from assigned_cleaner to cleaner
-                   self.user.role == 'admin')
-        except CleaningJob.DoesNotExist:
+            bidder = User.objects.get(id=self.bidder_id)
+            # Admin has access to all chats
+            if hasattr(self.user, 'role') and self.user.role == 'admin':
+                return True
+            # If job is confirmed, only client and winning cleaner can access
+            if job.status == 'confirmed':
+                if self.user == job.client:
+                    return True
+                if job.accepted_bid and self.user == job.accepted_bid.cleaner:
+                    return True
+                return False
+            # If job is not confirmed, allow client and any active bidder
+            if job.client == self.user:
+                return JobBid.objects.filter(
+                    job=job,
+                    cleaner=bidder,
+                    status__in=['pending', 'accepted']
+                ).exists()
+            if self.user == bidder:
+                return JobBid.objects.filter(
+                    job=job,
+                    cleaner=bidder,
+                    status__in=['pending', 'accepted']
+                ).exists()
+            return False
+        except (CleaningJob.DoesNotExist, User.DoesNotExist):
             return False
     
     @database_sync_to_async
     def ensure_chat_room_exists(self):
-        """Create or get chat room for this job"""
+        """
+        Create or get chat room for this specific job-bidder pair.
+        Uses the new get_or_create_job_chat method with bid validation.
+        """
         from cleaning_jobs.models import CleaningJob
+        from django.contrib.auth import get_user_model
+        
+        User = get_user_model()
+        
         try:
             job = CleaningJob.objects.get(id=self.job_id)
-            room, created = ChatRoom.objects.get_or_create(
-                job=job,
-                defaults={
-                    'name': f'Job #{job.id} Chat',
-                    'room_type': 'job'
-                }
-            )
-            # Add participants
-            room.participants.add(job.client)
-            if job.cleaner:  # Fixed: changed from assigned_cleaner to cleaner
-                room.participants.add(job.cleaner)
+            bidder = User.objects.get(id=self.bidder_id)
+            
+            # This will validate the bid exists and create/get the room
+            room, created = ChatRoom.get_or_create_job_chat(job, bidder)
             return room
-        except CleaningJob.DoesNotExist:
+            
+        except (CleaningJob.DoesNotExist, User.DoesNotExist, PermissionError):
             return None
     
     @database_sync_to_async
     def save_job_message(self, content):
-        """Save job chat message to database and update room's last message"""
+        """Save job chat message to database for this specific job-bidder chat"""
         try:
-            room = ChatRoom.objects.get(job_id=self.job_id)
+            # Get the specific room for this job-bidder pair
+            room = ChatRoom.objects.get(
+                job_id=self.job_id,
+                bidder_id=self.bidder_id,
+                room_type='job'
+            )
             message = Message.objects.create(
                 room=room,
                 sender=self.user,
@@ -365,10 +438,21 @@ class JobChatConsumer(AsyncWebsocketConsumer):
             # Update denormalized last_message fields on room
             room.update_last_message(message)
             
-            # Increment unread count for other participants
+            # Increment unread count for other participants and send notifications
             participants = ChatParticipant.objects.filter(room=room).exclude(user=self.user)
             for participant in participants:
                 participant.increment_unread()
+                
+                # Send notification to the participant
+                try:
+                    send_message_notification(
+                        recipient=participant.user,
+                        sender=self.user,
+                        job_id=self.job_id,
+                        message_preview=content
+                    )
+                except Exception as e:
+                    print(f"Error sending message notification: {e}")
             
             return message
         except ChatRoom.DoesNotExist:

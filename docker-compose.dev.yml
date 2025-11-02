@@ -46,6 +46,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ecloud_backend_dev
+    env_file:
+      - .env.dev.local
     environment:
       - DEBUG=1
       - POSTGRES_DB=ecloud_dev
@@ -56,6 +58,7 @@ services:
       - REDIS_URL=redis://:redis_dev_password@redis:6379/0
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_dev_password
       - REDIS_DB=0
       - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
     volumes:
@@ -100,6 +103,7 @@ services:
       - REDIS_URL=redis://:redis_dev_password@redis:6379/0
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_dev_password
       - REDIS_DB=0
       - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
     volumes:
@@ -132,6 +136,8 @@ services:
     environment:
       - REACT_APP_API_URL=http://localhost:8000/api
       - REACT_APP_WS_URL=ws://localhost:8000/ws
+      - VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51SEPusQ1SldwUSm9xBiqeuuEQflwqRTRCQBKoy7DCx33HWb7LkOD5c5I9ZAWsgj4uzuitPow9CNyoDmgPiSaa0bS00xFrugm8q
+      - VITE_API_BASE_URL=http://localhost:8000/api
     networks:
       - ecloud_network
 

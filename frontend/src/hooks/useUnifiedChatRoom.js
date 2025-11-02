@@ -1,41 +1,28 @@
 /**
- * useUnifiedChatRoom Hook
+ * useUnifiedChatRoom Hook - Simplified Version
  * 
- * Custom hook that combines UnifiedChatContext with pagination
- * for a complete chat room experience.
+ * Clean hook for managing a single chat room with pub/sub pattern.
  * 
  * Features:
- * - Automatic room subscription/unsubscription
- * - Paginated message loading (REST API)
- * - Real-time message updates (WebSocket)
+ * - Auto-subscribe to room on mount
+ * - Auto-unsubscribe on unmount
+ * - Load initial message history from API
+ * - Get messages from context (WebSocket is source of truth)
+ * - Send messages to room
  * - Typing indicators
  * - Read receipts
- * - Message sending
  * 
- * Usage:
- * ```jsx
- * const {
- *   messages,
- *   hasMore,
- *   isLoading,
- *   loadMore,
- *   sendMessage,
- *   sendTyping,
- *   typingUsers,
- *   markAsRead
- * } = useUnifiedChatRoom(roomId);
- * ```
+ * NO complex merging, NO optimistic UI
  */
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useUnifiedChat } from '../contexts/UnifiedChatContext';
-import { usePaginatedMessages } from './usePaginatedMessages';
+import chatLog from '../utils/chatLogger';
 
 export const useUnifiedChatRoom = (roomId, options = {}) => {
   const {
     autoSubscribe = true,
-    autoMarkRead = true,
-    pageSize = 50
+    autoMarkRead = true
   } = options;
   
   const {
@@ -43,157 +30,99 @@ export const useUnifiedChatRoom = (roomId, options = {}) => {
     subscribeToRoom,
     unsubscribeFromRoom,
     sendChatMessage,
-    sendTyping: sendTypingIndicator,
-    sendStopTyping: sendStopTypingIndicator,
-    markMessagesAsRead,
-    getRoomMessages: getWebSocketMessages,
+    getRoomMessages,
+    sendTyping,
+    sendStopTyping,
     getRoomTypingUsers,
-    getRoomUnreadCount,
+    markMessagesAsRead,
+    loadRoomHistory
   } = useUnifiedChat();
   
-  // Get WebSocket messages for this room (will update when context messages change)
-  const wsMessages = getWebSocketMessages(roomId);
-  
-  // Paginated messages from REST API
-  const {
-    messages: paginatedMessages,
-    hasMore,
-    isLoading,
-    isLoadingMore,
-    loadMore,
-    addNewMessage,
-    resetMessages,
-  } = usePaginatedMessages(roomId, { pageSize, autoLoad: true });
-  
-  // Track if we've subscribed
-  const isSubscribedRef = useRef(false);
-  const hasReceivedWebSocketMessages = useRef(false);
+  const typingTimeoutRef = useRef(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const hasLoadedHistoryRef = useRef(false);
   
   /**
-   * Subscribe to room on mount if enabled
+   * Load initial message history when room opens
    */
   useEffect(() => {
-    if (roomId && autoSubscribe && isConnected && !isSubscribedRef.current) {
-      console.log(`🔔 Auto-subscribing to room ${roomId}`);
-      subscribeToRoom(roomId);
-      isSubscribedRef.current = true;
-    }
-    
-    return () => {
-      if (roomId && isSubscribedRef.current) {
-        console.log(`🔕 Unsubscribing from room ${roomId}`);
-        unsubscribeFromRoom(roomId);
-        isSubscribedRef.current = false;
-      }
-    };
-  }, [roomId, autoSubscribe, isConnected, subscribeToRoom, unsubscribeFromRoom]);
-  
-  /**
-   * Listen for new WebSocket messages and add to paginated list
-   */
-  useEffect(() => {
-    console.log(`🔍 WebSocket merge effect running:`, {
-      roomId,
-      wsMessagesCount: wsMessages?.length || 0,
-      paginatedCount: paginatedMessages.length,
-      isLoading
-    });
-    
-    if (!roomId) {
-      console.log(`  ⏭️ Skipping: no roomId`);
+    if (!roomId || !isConnected || hasLoadedHistoryRef.current) {
       return;
     }
     
-    // wsMessages comes from context and updates when context messages change
-    // Only process messages received after initial load
-    if (wsMessages && wsMessages.length > 0 && !isLoading) {
-      // Get messages that aren't in paginated list yet
-      const lastPaginatedId = paginatedMessages.length > 0 
-        ? paginatedMessages[paginatedMessages.length - 1]?.id 
-        : 0;
+    const loadHistory = async () => {
+      setIsLoadingHistory(true);
+      chatLog.debug(`Loading message history for room ${roomId}`);
       
-      console.log(`  📊 Last paginated ID: ${lastPaginatedId}`);
-      
-      // Filter for new messages (including optimistic ones with temp IDs)
-      const paginatedIds = new Set(paginatedMessages.map(m => m.id));
-      const newMessages = wsMessages.filter(msg => {
-        // Include if:
-        // 1. Optimistic message (temp ID starting with "temp_")
-        // 2. New confirmed message not in paginated list
-        const isTempId = typeof msg.id === 'string' && msg.id.startsWith('temp_');
-        const isNewConfirmed = typeof msg.id === 'number' && msg.id > lastPaginatedId;
-        const notInPaginated = !paginatedIds.has(msg.id);
-        
-        return (isTempId || isNewConfirmed) && notInPaginated;
-      });
-      
-      console.log(`  🔍 Found ${newMessages.length} new messages to add`);
-      
-      if (newMessages.length > 0) {
-        console.log(`📨 Adding ${newMessages.length} WebSocket messages to room ${roomId}`, newMessages.map(m => ({ id: m.id, content: m.content?.substring(0, 20) })));
-        newMessages.forEach(msg => addNewMessage(msg));
-        hasReceivedWebSocketMessages.current = true;
+      try {
+        await loadRoomHistory(roomId);
+        hasLoadedHistoryRef.current = true;
+        chatLog.success(`Loaded message history for room ${roomId}`);
+      } catch (error) {
+        chatLog.error(`Failed to load history for room ${roomId}`, error);
+      } finally {
+        setIsLoadingHistory(false);
       }
-    } else {
-      console.log(`  ⏭️ Skipping merge:`, {
-        hasWsMessages: !!(wsMessages && wsMessages.length > 0),
-        isLoadingState: isLoading
-      });
-    }
-  }, [roomId, wsMessages, paginatedMessages, isLoading, addNewMessage]);
+    };
+    
+    loadHistory();
+  }, [roomId, isConnected, loadRoomHistory]);
   
   /**
-   * Auto-mark messages as read when user views them
+   * Subscribe to room on mount, unsubscribe on unmount
    */
   useEffect(() => {
-    if (roomId && autoMarkRead && paginatedMessages.length > 0) {
-      // Get IDs of unread messages
-      const unreadMessageIds = paginatedMessages
-        .filter(msg => !msg.is_read)
-        .map(msg => msg.id);
-      
-      if (unreadMessageIds.length > 0) {
-        console.log(`✓ Auto-marking ${unreadMessageIds.length} messages as read in room ${roomId}`);
-        // Small delay to ensure user has seen the messages
-        const timeout = setTimeout(() => {
-          markMessagesAsRead(roomId, unreadMessageIds);
-        }, 1000);
-        
-        return () => clearTimeout(timeout);
-      }
+    if (!roomId || !autoSubscribe || !isConnected) {
+      return;
     }
-  }, [roomId, autoMarkRead, paginatedMessages, markMessagesAsRead]);
+    
+    chatLog.debug(`Auto-subscribing to room ${roomId}`);
+    subscribeToRoom(roomId);
+    
+    return () => {
+      chatLog.debug(`Auto-unsubscribing from room ${roomId}`);
+      unsubscribeFromRoom(roomId);
+      hasLoadedHistoryRef.current = false; // Reset for next mount
+    };
+  }, [roomId, autoSubscribe, isConnected]); // Only these deps, functions are stable
+  
+  /**
+   * Get messages for this room (directly from context)
+   */
+  const messages = getRoomMessages(roomId);
+  
+  /**
+   * Get typing users for this room
+   */
+  const typingUsers = getRoomTypingUsers(roomId);
   
   /**
    * Send a message
    */
-  const sendMessage = useCallback((content, replyTo = null) => {
+  const sendMessage = useCallback((content) => {
     if (!content || !content.trim()) {
-      console.warn('⚠️ Cannot send empty message');
+      chatLog.warn('Cannot send empty message');
       return;
     }
     
-    sendChatMessage(roomId, content.trim(), replyTo);
+    sendChatMessage(roomId, content.trim());
   }, [roomId, sendChatMessage]);
   
   /**
-   * Send typing indicator with auto-stop after 2 seconds
+   * Send typing indicator with auto-timeout
    */
-  const typingTimeoutRef = useRef(null);
-  
-  const sendTyping = useCallback(() => {
-    sendTypingIndicator(roomId);
+  const startTyping = useCallback(() => {
+    sendTyping(roomId);
     
-    // Clear existing timeout
+    // Auto-stop after 3 seconds
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
     
-    // Auto-stop after 2 seconds
     typingTimeoutRef.current = setTimeout(() => {
-      sendStopTypingIndicator(roomId);
-    }, 2000);
-  }, [roomId, sendTypingIndicator, sendStopTypingIndicator]);
+      sendStopTyping(roomId);
+    }, 3000);
+  }, [roomId, sendTyping, sendStopTyping]);
   
   /**
    * Stop typing indicator
@@ -203,8 +132,8 @@ export const useUnifiedChatRoom = (roomId, options = {}) => {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
-    sendStopTypingIndicator(roomId);
-  }, [roomId, sendStopTypingIndicator]);
+    sendStopTyping(roomId);
+  }, [roomId, sendStopTyping]);
   
   /**
    * Mark messages as read
@@ -213,44 +142,37 @@ export const useUnifiedChatRoom = (roomId, options = {}) => {
     markMessagesAsRead(roomId, messageIds);
   }, [roomId, markMessagesAsRead]);
   
-  // Get current typing users
-  const typingUsers = getRoomTypingUsers(roomId);
-  
-  // Get unread count
-  const unreadCount = getRoomUnreadCount(roomId);
-  
-  // Cleanup typing timeout on unmount
+  /**
+   * Auto-mark messages as read when they appear
+   */
   useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+    if (!autoMarkRead || messages.length === 0) {
+      return;
+    }
+    
+    // Mark all unread messages as read after 1 second
+    const timeout = setTimeout(() => {
+      const unreadIds = messages
+        .filter(msg => !msg.is_read)
+        .map(msg => msg.id);
+      
+      if (unreadIds.length > 0) {
+        chatLog.debug(`Auto-marking ${unreadIds.length} messages as read`);
+        markAsRead(unreadIds);
       }
-    };
-  }, []);
+    }, 1000);
+    
+    return () => clearTimeout(timeout);
+  }, [messages, autoMarkRead, markAsRead]);
   
   return {
-    // Messages (from pagination + WebSocket)
-    messages: paginatedMessages,
-    hasMore,
-    isLoading,
-    isLoadingMore,
-    loadMore,
-    
-    // Messaging
+    messages,
     sendMessage,
-    isConnected,
-    
-    // Typing
-    sendTyping,
+    startTyping,
     stopTyping,
     typingUsers,
-    
-    // Read receipts
     markAsRead,
-    unreadCount,
-    
-    // Room state
-    roomId,
+    isConnected
   };
 };
 

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'job_lifecycle',  # Enhanced job management with photos, notifications, and workflow tracking
     'chat',  # Real-time chat functionality
     'notifications',  # Real-time notifications
+    'payments',  # Payment processing with Stripe
 ]
 
 MIDDLEWARE = [
@@ -197,11 +198,14 @@ SIMPLE_JWT = {
 ASGI_APPLICATION = 'e_clean_backend.asgi.application'
 
 # Channel Layers Configuration for Redis
+# NOTE: Must match Redis password in docker-compose.dev.yml
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [os.environ.get('REDIS_URL', 'redis://localhost:6379/0')],
+            'hosts': [os.environ.get('REDIS_URL', 'redis://:redis_dev_password@localhost:6379/0')],
+            'capacity': 1500,  # Maximum messages to store per channel
+            'expiry': 10,      # Message expiry time in seconds
         },
     },
 }
@@ -214,7 +218,14 @@ CHANNEL_LAYERS = {
 REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
 REDIS_DB = int(os.environ.get('REDIS_DB', 0))
-REDIS_URL = os.environ.get('REDIS_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
+REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', 'redis_dev_password')
+
+# Construct Redis URL with password
+# Format: redis://:password@host:port/db
+if REDIS_PASSWORD:
+    REDIS_URL = os.environ.get('REDIS_URL', f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
+else:
+    REDIS_URL = os.environ.get('REDIS_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
 
 # Event publishing settings
 EVENT_PUBLISHER_ENABLED = True
@@ -222,3 +233,68 @@ EVENT_SUBSCRIBER_TOPICS = ['jobs', 'notifications', 'chat', 'payments']
 
 # WebSocket Settings
 WEBSOCKET_ACCEPT_ALL = True  # For development only
+
+# ===========================
+# Stripe Payment Configuration
+# ===========================
+
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# Stripe Connect (for cleaner payouts)
+STRIPE_CONNECT_CLIENT_ID = os.environ.get('STRIPE_CONNECT_CLIENT_ID', '')
+
+# Platform fee percentage (e.g., 15% = 0.15)
+PLATFORM_FEE_PERCENTAGE = float(os.environ.get('PLATFORM_FEE_PERCENTAGE', '0.15'))
+
+# ===========================
+# Logging Configuration
+# ===========================
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'payments': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'payments.webhooks': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

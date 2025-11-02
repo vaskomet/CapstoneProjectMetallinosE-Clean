@@ -94,6 +94,14 @@ const JobWorkflowModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validate payment status for certain actions
+    if ((action === 'start' || action === 'finish') && job.payment_info) {
+      if (job.payment_info.status !== 'succeeded') {
+        toast.error('Payment must be completed before starting or finishing the job');
+        return;
+      }
+    }
+    
     // Validate required photos
     if (actionInfo.requiresBeforePhotos && beforePhotos.length === 0) {
       toast.error('Please upload at least one before photo to start the job');
@@ -192,6 +200,23 @@ const JobWorkflowModal = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Payment Status Warning */}
+          {(action === 'start' || action === 'finish') && job.payment_info && job.payment_info.status !== 'succeeded' && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <svg className="w-6 h-6 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <h4 className="font-medium text-red-800">Payment Required</h4>
+                  <p className="text-sm text-red-700 mt-1">
+                    Payment status is <strong>{job.payment_info.status}</strong>. Payment must be completed before you can proceed with this action.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Job Details */}
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="font-medium text-gray-900 mb-2">Job Details</h3>
@@ -216,6 +241,25 @@ const JobWorkflowModal = ({
                   ${job.final_price || job.client_budget}
                 </p>
               </div>
+              {/* Payment Status in Job Details */}
+              {job.payment_info && (
+                <div className="col-span-2 pt-2 border-t border-gray-200">
+                  <span className="font-medium text-gray-600">Payment Status:</span>
+                  <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium ${
+                    job.payment_info.status === 'succeeded' ? 'bg-green-100 text-green-800' :
+                    job.payment_info.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                    job.payment_info.status === 'failed' ? 'bg-red-100 text-red-800' :
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {job.payment_info.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </span>
+                  {job.payment_info.payment_method && (
+                    <span className="ml-2 text-xs text-gray-600">
+                      {job.payment_info.payment_method.brand?.toUpperCase()} ••••{job.payment_info.payment_method.last4}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

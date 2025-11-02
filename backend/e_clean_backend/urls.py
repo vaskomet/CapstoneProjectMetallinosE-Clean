@@ -48,9 +48,12 @@ urlpatterns = [
     # Real-time notifications
     # Endpoints: notifications, preferences, bulk sending
     path('', include('notifications.urls')),
-
-    # Placeholder for future app URLs (payments, reviews)
-    # path('api/payments/', include('payments.urls')),
+    
+    # Payment processing with Stripe
+    # Endpoints: payment intents, confirmations, Stripe Connect, refunds
+    path('api/payments/', include('payments.urls')),
+    
+    # Placeholder for future app URLs (reviews)
     # path('api/reviews/', include('reviews.urls')),
 ]
 

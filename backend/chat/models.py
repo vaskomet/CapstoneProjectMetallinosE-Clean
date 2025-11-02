@@ -7,6 +7,9 @@ class ChatRoom(models.Model):
     """
     Chat room for communication between clients and cleaners
     Can be job-specific, direct message, or general support chat
+    
+    For job chats: Each job can have multiple chat rooms (one per bidder)
+    This allows private conversations between client and each bidder
     """
     ROOM_TYPES = (
         ('job', 'Job Chat'),
@@ -17,13 +20,26 @@ class ChatRoom(models.Model):
     
     name = models.CharField(max_length=255)
     room_type = models.CharField(max_length=20, choices=ROOM_TYPES, default='job')
-    job = models.OneToOneField(
+    
+    # Changed from OneToOneField to ForeignKey to allow multiple chats per job
+    job = models.ForeignKey(
         CleaningJob, 
         on_delete=models.CASCADE, 
         null=True, 
         blank=True,
-        related_name='chat_room'
+        related_name='chat_rooms'  # Changed from 'chat_room' (singular) to 'chat_rooms' (plural)
     )
+    
+    # NEW: Track which bidder/cleaner this chat is with (for job chats)
+    bidder = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='bidder_chat_rooms',
+        help_text='The cleaner/bidder in this job chat. Required for job-type rooms.'
+    )
+    
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL, 
         related_name='chat_rooms'
@@ -49,15 +65,71 @@ class ChatRoom(models.Model):
             models.Index(fields=['-updated_at'], name='chat_room_updated_idx'),
             models.Index(fields=['job'], name='chat_room_job_idx'),
             models.Index(fields=['room_type', '-updated_at'], name='chat_room_type_idx'),
+            models.Index(fields=['job', 'bidder'], name='chat_job_bidder_idx'),
+        ]
+        constraints = [
+            # Ensure unique chat per job-bidder pair (for job-type rooms only)
+            models.UniqueConstraint(
+                fields=['job', 'bidder'],
+                condition=models.Q(room_type='job'),
+                name='unique_job_bidder_chat'
+            )
         ]
     
     def __str__(self):
         if self.job:
+            if self.bidder:
+                return f"Chat for Job #{self.job.id} with {self.bidder.username}"
             return f"Chat for Job #{self.job.id}"
         if self.room_type == 'direct':
             participant_names = ', '.join([p.get_full_name() or p.username for p in self.participants.all()[:2]])
             return f"DM: {participant_names}"
         return f"{self.room_type.title()} Chat: {self.name}"
+    
+    @classmethod
+    def get_or_create_job_chat(cls, job, bidder):
+        """
+        Get or create a job chat for a specific job-bidder pair.
+        Ensures the bidder has an active bid on the job.
+        
+        Args:
+            job: CleaningJob instance
+            bidder: User instance (the cleaner who bid)
+            
+        Returns:
+            tuple: (ChatRoom, created) where created is a boolean
+            
+        Raises:
+            PermissionError: If bidder doesn't have an active bid
+        """
+        from cleaning_jobs.models import JobBid
+        
+        # Validate that bidder has an active bid
+        bid_exists = JobBid.objects.filter(
+            job=job,
+            cleaner=bidder,
+            status__in=['pending', 'accepted']  # Not withdrawn/rejected
+        ).exists()
+        
+        if not bid_exists:
+            raise PermissionError(
+                f"User {bidder.username} must place a bid on Job #{job.id} before accessing chat"
+            )
+        
+        # Get or create the chat room
+        room, created = cls.objects.get_or_create(
+            job=job,
+            bidder=bidder,
+            room_type='job',
+            defaults={
+                'name': f'Job #{job.id} - {bidder.username}'
+            }
+        )
+        
+        # Ensure both client and bidder are participants
+        room.participants.add(job.client, bidder)
+        
+        return room, created
     
     @classmethod
     def get_or_create_direct_room(cls, user1, user2):

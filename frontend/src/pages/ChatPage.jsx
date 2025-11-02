@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import ChatRoom from '../components/chat/ChatRoom';
 import { cleaningJobsAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
@@ -7,11 +7,14 @@ import { useToast } from '../contexts/ToastContext';
 /**
  * ChatPage Component
  * 
- * Standalone page for job-specific chat communication
- * Loads job details and renders chat interface
+ * Standalone page for job-specific chat communication with a specific bidder
+ * URL: /jobs/:jobId/chat?bidder=:bidderId
+ * Loads job details and renders chat interface for that job-bidder pair
  */
 const ChatPage = () => {
   const { jobId } = useParams();
+  const [searchParams] = useSearchParams();
+  const bidderId = searchParams.get('bidder');
   const navigate = useNavigate();
   const toast = useToast();
   const [job, setJob] = useState(null);
@@ -84,7 +87,11 @@ const ChatPage = () => {
 
       {/* Chat Room */}
       <div className="bg-white rounded-lg shadow">
-        <ChatRoom jobId={jobId} className="h-[calc(100vh-280px)]" />
+        <ChatRoom 
+          jobId={jobId} 
+          bidderId={bidderId} 
+          className="h-[calc(100vh-280px)]" 
+        />
       </div>
     </div>
   );

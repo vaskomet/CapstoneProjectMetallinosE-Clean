@@ -17,3 +17,6 @@ daphne==4.1.*
 
 # Redis for caching and message broker
 redis==5.2.*
+
+# Payment Processing
+stripe==11.3.*

@@ -8,6 +8,7 @@ import { useUser } from '../contexts/UserContext';
 import { cleaningJobsAPI, propertiesAPI, jobBidsAPI } from '../services/api';
 import LocationFilter from './LocationFilter';
 import JobWorkflowModal from './JobWorkflowModal';
+import PaymentModal from './payments/PaymentModal';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -148,6 +149,11 @@ const CleaningJobsPool = () => {
   // Job workflow modal states
   const [showWorkflowModal, setShowWorkflowModal] = useState(false); // Workflow modal visibility
   const [workflowAction, setWorkflowAction] = useState(null); // Current workflow action: 'confirm', 'start', 'finish'
+
+  // Payment modal states
+  const [showPaymentModal, setShowPaymentModal] = useState(false); // Payment modal visibility
+  const [paymentJobData, setPaymentJobData] = useState(null); // Job data for payment (job ID, amount, title)
+  const [pendingBidId, setPendingBidId] = useState(null); // Bid ID pending payment confirmation
 
   // Ref to prevent multiple simultaneous fetch calls
   const fetchingRef = useRef(false);
@@ -472,15 +478,60 @@ const CleaningJobsPool = () => {
 
   /**
    * Handles bid acceptance by clients
-   * Accepts a specific bid and updates job status to confirmed
+   * Opens payment modal first, bid is accepted only after successful payment
+   * Payment flow: Open payment modal → Process payment → Accept bid on success
    * @param {number} bidId - ID of the bid to accept
+   * @param {object} bid - Bid object with amount and job details
    */
-  const handleAcceptBid = async (bidId) => {
+  const handleAcceptBid = async (bidId, bid) => {
     try {
-      await jobBidsAPI.acceptBid(bidId);
-      toast.success('Bid accepted successfully!');
+      // Find the job associated with this bid
+      const job = jobs.find(j => j.id === bid.job);
+      
+      if (!job) {
+        toast.error('Job not found for this bid');
+        return;
+      }
 
-      // Refresh all data
+      // Prepare payment data and open modal
+      setPaymentJobData({
+        bidId: bidId,
+        jobId: job.id,
+        amount: parseFloat(bid.bid_amount),
+        jobTitle: `${job.service_type_name || 'Cleaning Service'} - ${job.property_address || 'Property'}`,
+      });
+      
+      // Store bid ID for reference
+      setPendingBidId(bidId);
+      
+      // Close job modal and open payment modal
+      setShowJobModal(false);
+      setShowPaymentModal(true);
+      
+      toast.info('Please complete payment to accept this bid.');
+      
+    } catch (err) {
+      const errorMessage = err.message || 'Failed to process bid';
+      console.error('Error in handleAcceptBid:', err);
+      toast.error(errorMessage);
+    }
+  };
+
+  /**
+   * Handle successful payment
+   * Called after payment is confirmed with Stripe
+   * Refreshes job data to show updated payment status
+   */
+  const handlePaymentSuccess = async (paymentIntent) => {
+    try {
+      toast.success('Payment successful! Your booking is confirmed.');
+      
+      // Clear payment state
+      setShowPaymentModal(false);
+      setPaymentJobData(null);
+      setPendingBidId(null);
+
+      // Refresh all data to show updated job status
       const [jobsResponse, bidsResponse] = await Promise.all([
         cleaningJobsAPI.getAll(),
         jobBidsAPI.getAll()
@@ -499,14 +550,9 @@ const CleaningJobsPool = () => {
           setSelectedJob(updatedJob);
         }
       }
-
-      setShowJobModal(false);
-
-      // No need to trigger workflow modal - cleaner will confirm the accepted bid
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || 'Failed to accept bid';
-      toast.error('Error: ' + errorMessage);
-      console.error('Accept bid error:', err);
+      console.error('Error refreshing after payment:', err);
+      toast.error('Payment successful, but failed to refresh job data. Please refresh the page.');
     }
   };
 
@@ -948,19 +994,6 @@ const CleaningJobsPool = () => {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
                 <div className="flex items-center space-x-3">
-                  {/* Chat Button */}
-                  <button
-                    onClick={() => {
-                      navigate(`/jobs/${selectedJob.id}/chat`);
-                      setShowJobModal(false);
-                    }}
-                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span>Chat</span>
-                  </button>
                   {/* Close Button */}
                   <button
                     onClick={() => setShowJobModal(false)}
@@ -998,6 +1031,50 @@ const CleaningJobsPool = () => {
                     {selectedJob.status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                   </span>
                 </div>
+
+                {/* Payment Status */}
+                {selectedJob.payment_info && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <span className="font-medium text-gray-700 flex items-center gap-2">
+                          💳 Payment Status:
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            selectedJob.payment_info.status === 'succeeded' ? 'bg-green-100 text-green-800' :
+                            selectedJob.payment_info.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                            selectedJob.payment_info.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            selectedJob.payment_info.status === 'refunded' ? 'bg-purple-100 text-purple-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {selectedJob.payment_info.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-blue-900">
+                          ${parseFloat(selectedJob.payment_info.amount).toFixed(2)}
+                        </div>
+                        {selectedJob.payment_info.payment_method && (
+                          <div className="text-xs text-gray-600 mt-1">
+                            {selectedJob.payment_info.payment_method.brand?.toUpperCase()} ••••{' '}
+                            {selectedJob.payment_info.payment_method.last4}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {selectedJob.payment_info.paid_at && (
+                      <div className="text-xs text-gray-600 mt-2">
+                        Paid on {new Date(selectedJob.payment_info.paid_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div>
                   <span className="font-medium text-gray-700">Date:</span>
@@ -1071,7 +1148,7 @@ const CleaningJobsPool = () => {
                           bid.status === 'accepted' ? 'border-green-300 bg-green-50' : 'border-gray-200'
                         }`}>
                           <div className="flex justify-between items-start">
-                            <div>
+                            <div className="flex-1">
                               <p className="font-medium text-gray-900">${bid.bid_amount}</p>
                               <p className="text-sm text-gray-600">
                                 {bid.cleaner?.first_name || bid.cleaner?.username || 'Unknown'} • {bid.estimated_duration} min
@@ -1081,14 +1158,34 @@ const CleaningJobsPool = () => {
                               )}
                             </div>
                             <div className="flex space-x-2">
-                              {user?.role === 'client' && selectedJob.status === 'open_for_bids' && bid.status === 'pending' && (
+                              {/* Chat button - Available for both client and the bidder */}
+                              {(user?.role === 'client' || (user?.role === 'cleaner' && bid.cleaner?.id === user.id)) && (
                                 <button
-                                  onClick={() => handleAcceptBid(bid.id)}
-                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                  onClick={() => {
+                                    navigate(`/jobs/${selectedJob.id}/chat?bidder=${bid.cleaner.id}`);
+                                    setShowJobModal(false);
+                                  }}
+                                  className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
+                                  title={user?.role === 'client' ? `Chat with ${bid.cleaner?.username}` : 'Chat with client'}
                                 >
-                                  Accept
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                  </svg>
+                                  <span>Chat</span>
                                 </button>
                               )}
+                              
+                              {/* Accept & Pay button - Only for client on open jobs */}
+                              {user?.role === 'client' && selectedJob.status === 'open_for_bids' && bid.status === 'pending' && (
+                                <button
+                                  onClick={() => handleAcceptBid(bid.id, bid)}
+                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                >
+                                  Accept & Pay
+                                </button>
+                              )}
+                              
+                              {/* Withdraw button - Only for cleaner's own bids */}
                               {user?.role === 'cleaner' && bid.cleaner?.id === user.id && bid.status === 'pending' && (
                                 <button
                                   onClick={() => handleWithdrawBid(bid.id)}
@@ -1136,7 +1233,7 @@ const CleaningJobsPool = () => {
                   <div className="space-y-2">
                     <h3 className="font-medium text-gray-700">Job Actions:</h3>
                     <div className="flex gap-2">
-                      {selectedJob.status === 'confirmed' && (
+                      {(selectedJob.status === 'confirmed' || selectedJob.status === 'bid_accepted') && (
                         (() => {
                           const canStartNow = selectedJob.scheduled_date && selectedJob.start_time ? (() => {
                             const scheduledDateTime = new Date(`${selectedJob.scheduled_date}T${selectedJob.start_time}`);
@@ -1197,6 +1294,18 @@ const CleaningJobsPool = () => {
               </div>
 
               <form onSubmit={(e) => handleSubmitBid(e, selectedJob.id)} className="space-y-4">
+                {/* Info Message */}
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <div className="flex items-start">
+                    <svg className="w-5 h-5 text-blue-600 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-blue-800">
+                      <strong>Note:</strong> After submitting your bid, you'll be able to chat with the client to discuss job details!
+                    </p>
+                  </div>
+                </div>
+                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Your Bid Amount ($)
@@ -1276,6 +1385,23 @@ const CleaningJobsPool = () => {
           action={workflowAction}
           onJobUpdated={handleJobUpdated}
           onClose={closeWorkflowModal}
+        />
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && paymentJobData && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setPaymentJobData(null);
+            setPendingBidId(null);
+          }}
+          jobId={paymentJobData.jobId}
+          bidId={paymentJobData.bidId}
+          amount={paymentJobData.amount}
+          jobTitle={paymentJobData.jobTitle}
+          onSuccess={handlePaymentSuccess}
         />
       )}
     </div>

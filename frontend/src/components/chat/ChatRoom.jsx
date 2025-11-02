@@ -96,10 +96,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { useUnifiedChatRoom } from '../../hooks/useUnifiedChatRoom';
-import InfiniteScrollMessages from './InfiniteScrollMessages';
 import { chatAPI } from '../../services/api';
 
-const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
+const ChatRoom = ({ jobId, roomId: propRoomId, bidderId, className = "" }) => {
   const { user } = useUser();
   
   // State to hold the actual room ID (fetched by job ID if needed)
@@ -127,11 +126,13 @@ const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
       try {
         setRoomLoading(true);
         setRoomError(null);
-        console.log(`🔍 Fetching room for job ${jobId}`);
-        const room = await chatAPI.getJobChatRoom(jobId);
+        console.log(`🔍 Fetching room for job ${jobId}, bidder ${bidderId || 'auto'}`);
+        
+        // Start job chat with bidder parameter
+        const room = await chatAPI.startJobChat(jobId, bidderId);
         
         if (room && room.id) {
-          console.log(`✅ Found room ${room.id} for job ${jobId}`);
+          console.log(`✅ Found/created room ${room.id} for job ${jobId}, bidder ${bidderId || user.id}`);
           setRoomId(room.id);
         } else {
           const error = `No chat room found for job ${jobId}`;
@@ -140,31 +141,32 @@ const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
         }
       } catch (error) {
         console.error(`❌ Error fetching room for job ${jobId}:`, error);
-        setRoomError(error.message || 'Failed to load chat room');
+        
+        // Check if error is due to missing bid
+        if (error.response?.status === 403 || error.message?.includes('bid')) {
+          setRoomError('You must place a bid on this job before accessing chat.');
+        } else {
+          setRoomError(error.message || 'Failed to load chat room');
+        }
       } finally {
         setRoomLoading(false);
       }
     };
     
     fetchRoom();
-  }, [jobId, propRoomId]);
+  }, [jobId, propRoomId, bidderId, user?.id]);
   
-  // Use unified chat room hook with pagination + WebSocket
+  // Use unified chat room hook with simplified pub/sub pattern
   const {
     messages,
-    hasMore,
-    isLoading,
-    isLoadingMore,
-    loadMore,
     sendMessage,
     isConnected,
-    sendTyping: sendTypingIndicator,
+    startTyping: sendTypingIndicator,
     stopTyping,
     typingUsers,
   } = useUnifiedChatRoom(roomId, {
     autoSubscribe: true,
-    autoMarkRead: true,
-    pageSize: 50
+    autoMarkRead: true
   });
 
   // Local state for message input
@@ -318,16 +320,9 @@ const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
         )}
       </div>
 
-      {/* Messages Container - Scrollable message history with pagination */}
-      <InfiniteScrollMessages
-        onLoadMore={loadMore}
-        hasMore={hasMore}
-        isLoading={isLoading}
-        isLoadingMore={isLoadingMore}
-        autoScrollToBottom={true}
-        className="flex-1 p-4 space-y-3"
-      >
-        {messages.length === 0 && !isLoading ? (
+      {/* Messages Container - Scrollable message history */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 ? (
           /* Empty State - No messages placeholder */
           <div className="text-center text-gray-500 py-8">
             <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="currentColor" viewBox="0 0 24 24">
@@ -406,7 +401,7 @@ const ChatRoom = ({ jobId, roomId: propRoomId, className = "" }) => {
             );
           })
         )}
-      </InfiniteScrollMessages>
+      </div>
 
       {/* Typing Indicator - Shows when other users are typing */}
       {typingUsers && typingUsers.length > 0 && (

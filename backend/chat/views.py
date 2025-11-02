@@ -22,10 +22,27 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
-        return ChatRoom.objects.filter(
+        base_qs = ChatRoom.objects.filter(
             participants=user,
             is_active=True
         ).distinct()
+        # Restrict job chats after job is confirmed: only winning cleaner and client can access
+        job_chats = base_qs.filter(room_type='job')
+        allowed_job_chat_ids = []
+        for room in job_chats:
+            job = room.job
+            if not job:
+                continue
+            if job.status == 'confirmed':
+                # Only allow client and winning cleaner
+                if user == job.client or (job.accepted_bid and user == job.accepted_bid.cleaner):
+                    allowed_job_chat_ids.append(room.id)
+            else:
+                allowed_job_chat_ids.append(room.id)
+        # Non-job chats are always allowed
+        non_job_chat_ids = list(base_qs.exclude(room_type='job').values_list('id', flat=True))
+        all_allowed_ids = allowed_job_chat_ids + list(non_job_chat_ids)
+        return ChatRoom.objects.filter(id__in=all_allowed_ids)
     
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
@@ -40,6 +57,13 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
         Returns messages in descending order by ID (newest first) by default.
         """
         room = self.get_object()
+        user = request.user
+        # Restrict job chats after job is confirmed: only winning cleaner and client can access
+        if room.room_type == 'job' and room.job:
+            job = room.job
+            if job.status == 'confirmed':
+                if not (user == job.client or (job.accepted_bid and user == job.accepted_bid.cleaner)):
+                    return Response({'detail': 'You do not have permission to access this chat.'}, status=403)
         
         # Get pagination parameters
         before_id = request.query_params.get('before')
@@ -154,6 +178,112 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
             'room': serializer.data,
             'created': created,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'])
+    def start_job_chat(self, request):
+        """
+        Start or get existing job chat with a specific bidder.
+        
+        POST /chat/rooms/start_job_chat/
+        Body: { 
+            "job_id": 123, 
+            "bidder_id": 456  # Optional for cleaners (defaults to themselves)
+        }
+        
+        For cleaners: bidder_id defaults to the requester (they chat about their own bid)
+        For clients: bidder_id required to specify which bidder to chat with
+        
+        Validates that the bidder has an active bid on the job before creating/accessing chat.
+        """
+        from cleaning_jobs.models import CleaningJob, JobBid
+        
+        job_id = request.data.get('job_id')
+        bidder_id = request.data.get('bidder_id')
+        
+        if not job_id:
+            return Response(
+                {'error': 'job_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get the job
+        try:
+            job = CleaningJob.objects.get(id=job_id)
+        except CleaningJob.DoesNotExist:
+            return Response(
+                {'error': 'Job not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Determine the bidder
+        if hasattr(request.user, 'role') and request.user.role == 'cleaner':
+            # Cleaners chat about their own bids
+            bidder = request.user
+        elif bidder_id:
+            # Clients must specify which bidder they want to chat with
+            try:
+                bidder = User.objects.get(id=bidder_id)
+            except User.DoesNotExist:
+                return Response(
+                    {'error': 'Bidder not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            return Response(
+                {'error': 'bidder_id is required for clients'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate access permissions
+        if request.user not in [job.client, bidder]:
+            return Response(
+                {'error': 'Not authorized to access this chat'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Try to get or create the chat room (will validate bid existence)
+        try:
+            room, created = ChatRoom.get_or_create_job_chat(job, bidder)
+        except PermissionError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = ChatRoomSerializer(room, context={'request': request})
+        return Response({
+            'room': serializer.data,
+            'created': created,
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['get'])
+    def job_chats(self, request):
+        """
+        List all job-related chats for the current user.
+        Restrict access after job is confirmed: only client and winning cleaner can access.
+        """
+        from cleaning_jobs.models import CleaningJob
+        job_id = request.query_params.get('job_id')
+        queryset = ChatRoom.objects.filter(
+            participants=request.user,
+            room_type='job',
+            is_active=True
+        ).select_related('job', 'bidder').prefetch_related('participants')
+        if job_id:
+            queryset = queryset.filter(job_id=job_id)
+        allowed_chat_ids = []
+        for room in queryset:
+            job = room.job
+            if not job:
+                continue
+            if job.status == 'confirmed':
+                if request.user == job.client or (job.accepted_bid and request.user == job.accepted_bid.cleaner):
+                    allowed_chat_ids.append(room.id)
+            else:
+                allowed_chat_ids.append(room.id)
+        queryset = queryset.filter(id__in=allowed_chat_ids)
+        serializer = ChatRoomSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
     def direct_messages(self, request):

@@ -77,6 +77,22 @@ class User(AbstractBaseUser, PermissionsMixin):
     oauth_provider = models.CharField(max_length=50, blank=True, null=True)
     verification_token = models.CharField(max_length=255, blank=True, null=True)
     
+    # Stripe integration fields
+    stripe_customer_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Stripe Customer ID for clients (payment processing)"
+    )
+    stripe_account_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Stripe Connect Account ID for cleaners (receiving payouts)"
+    )
+    
     # Future field placeholder
     # subscription_tier = models.CharField(max_length=50, blank=True, null=True)
 

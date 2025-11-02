@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../hooks/useWebSocket';
 
 /**
@@ -48,6 +49,7 @@ import { useNotifications } from '../../hooks/useWebSocket';
 const NotificationToast = () => {
   // Extract notifications from WebSocket hook
   const { notifications } = useNotifications();
+  const navigate = useNavigate();
 
   // State to manage active toast notifications with animation states
   const [toasts, setToasts] = useState([]);
@@ -108,6 +110,18 @@ const NotificationToast = () => {
   };
 
   /**
+   * Handles clicking on a toast notification
+   * Navigates to action URL if available and removes the toast
+   * @param {Object} toast - The toast object clicked
+   */
+  const handleToastClick = (toast) => {
+    if (toast.notification.action_url) {
+      removeToast(toast.id);
+      navigate(toast.notification.action_url);
+    }
+  };
+
+  /**
    * Returns Tailwind CSS classes for priority-based toast styling
    * @param {string} priority - Notification priority level
    * @returns {string} CSS classes for toast background and border
@@ -157,9 +171,11 @@ const NotificationToast = () => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
+          onClick={() => handleToastClick(toast)}
           className={`
             max-w-sm w-full shadow-lg rounded-lg pointer-events-auto
             border-l-4 transition-all duration-300 ease-in-out transform
+            ${toast.notification.action_url ? 'cursor-pointer hover:shadow-xl' : ''}
             ${toast.isVisible
               ? 'translate-x-0 opacity-100'
               : 'translate-x-full opacity-0'
@@ -185,18 +201,12 @@ const NotificationToast = () => {
                   {toast.notification.message}
                 </p>
 
-                {/* Action button - only shown if notification has action_url */}
+                {/* Action hint - only shown if notification has action_url */}
                 {toast.notification.action_url && (
-                  <div className="mt-3">
-                    <button
-                      onClick={() => {
-                        window.location.href = toast.notification.action_url;
-                        removeToast(toast.id);
-                      }}
-                      className="text-sm font-medium underline opacity-90 hover:opacity-100"
-                    >
-                      View Details
-                    </button>
+                  <div className="mt-2">
+                    <span className="text-xs font-medium opacity-75">
+                      Click to view →
+                    </span>
                   </div>
                 )}
               </div>
@@ -204,7 +214,10 @@ const NotificationToast = () => {
               {/* Close button for manual dismissal */}
               <div className="ml-4 flex-shrink-0 flex">
                 <button
-                  onClick={() => removeToast(toast.id)}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent triggering card click
+                    removeToast(toast.id);
+                  }}
                   className="inline-flex text-white hover:opacity-75 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white rounded"
                 >
                   <span className="sr-only">Close</span>

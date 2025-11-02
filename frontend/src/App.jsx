@@ -18,6 +18,8 @@ import CleaningJobsPool from './components/CleaningJobsPool';
 import CompletedJobsDashboard from './components/CompletedJobsDashboard';
 import Profile from './components/Profile';
 import ChatPage from './pages/ChatPage';
+// import PaymentHistory from './pages/PaymentHistory.jsx';
+// import StripeConnect from './pages/StripeConnect.jsx';
 import './utils/globalSetup'; // Initialize global error handling
 import './App.css';
 
@@ -95,6 +97,22 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
+                {/* <Route 
+                  path="/payments" 
+                  element={
+                    <ProtectedRoute>
+                      <PaymentHistory />
+                    </ProtectedRoute>
+                  } 
+                /> */}
+                {/* <Route 
+                  path="/stripe-connect" 
+                  element={
+                    <ProtectedRoute>
+                      <StripeConnect />
+                    </ProtectedRoute>
+                  } 
+                /> */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
               </Routes>
             </main>

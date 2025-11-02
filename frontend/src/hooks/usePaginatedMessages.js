@@ -194,14 +194,30 @@ export const usePaginatedMessages = (roomId, options = {}) => {
   /**
    * Add a new message to the list (from WebSocket)
    * Appends to the end and updates newest message ID
+   * Handles optimistic message replacement by checking temp IDs
    */
   const addNewMessage = useCallback((newMessage) => {
     if (!newMessage || !newMessage.id) return;
 
     setMessages(prevMessages => {
-      // Check if message already exists
-      if (prevMessages.some(msg => msg.id === newMessage.id)) {
+      // Check if message already exists by real ID
+      const existsByRealId = prevMessages.some(msg => msg.id === newMessage.id);
+      if (existsByRealId) {
+        console.log(`  ⏭️ Message ${newMessage.id} already exists, skipping`);
         return prevMessages;
+      }
+      
+      // Check if this is a confirmation of an optimistic message (by temp ID)
+      const tempIdIndex = newMessage._tempId 
+        ? prevMessages.findIndex(msg => msg.id === newMessage._tempId || msg._tempId === newMessage._tempId)
+        : -1;
+      
+      if (tempIdIndex !== -1) {
+        // Replace optimistic message with confirmed message
+        console.log(`  🔄 Replacing optimistic message ${newMessage._tempId} with ${newMessage.id}`);
+        const updated = [...prevMessages];
+        updated[tempIdIndex] = newMessage;
+        return updated;
       }
       
       // Append new message to the end

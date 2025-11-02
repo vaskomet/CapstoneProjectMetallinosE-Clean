@@ -57,6 +57,15 @@ frontend/build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.dev.local
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.production.local
+
+# Stripe keys (NEVER COMMIT)
+**/stripe_keys.env
+.stripe_keys
 
 # Docker
 .docker/

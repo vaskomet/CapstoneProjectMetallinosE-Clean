@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../hooks/useWebSocket';
 
 /**
@@ -49,6 +50,7 @@ import { useNotifications } from '../../hooks/useWebSocket';
 const NotificationBell = ({ className = "" }) => {
   // Extract notification data and actions from WebSocket hook
   const { unreadCount, notifications, markAsRead, markAllAsRead, isConnected } = useNotifications();
+  const navigate = useNavigate();
 
   // State for controlling dropdown visibility
   const [isOpen, setIsOpen] = useState(false);
@@ -79,9 +81,12 @@ const NotificationBell = ({ className = "" }) => {
       markAsRead(notification.id);
     }
 
+    // Close dropdown
+    setIsOpen(false);
+
     // Navigate to action URL if available (e.g., job details, chat)
     if (notification.action_url) {
-      window.location.href = notification.action_url;
+      navigate(notification.action_url);
     }
   };
 

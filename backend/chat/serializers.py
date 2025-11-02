@@ -9,12 +9,14 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     last_message_sender = UserSerializer(read_only=True)
+    bidder = UserSerializer(read_only=True)  # NEW: Include bidder information
+    job_details = serializers.SerializerMethodField()  # NEW: Include job info
     
     class Meta:
         model = ChatRoom
         fields = [
-            'id', 'name', 'room_type', 'job', 'participants', 
-            'participant_count', 'last_message', 'unread_count',
+            'id', 'name', 'room_type', 'job', 'bidder', 'job_details',
+            'participants', 'participant_count', 'last_message', 'unread_count',
             'last_message_content', 'last_message_time', 'last_message_sender',
             'created_at', 'updated_at', 'is_active'
         ]
@@ -22,6 +24,17 @@ class ChatRoomSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 
             'last_message_content', 'last_message_time', 'last_message_sender'
         ]
+    
+    def get_job_details(self, obj):
+        """Return basic job information if this is a job chat"""
+        if obj.job:
+            return {
+                'id': obj.job.id,
+                'service_type': obj.job.service_type if hasattr(obj.job, 'service_type') else None,
+                'property_address': obj.job.property.address_line1 if obj.job.property else None,
+                'status': obj.job.status
+            }
+        return None
     
     def get_participant_count(self, obj):
         return obj.participants.count()
