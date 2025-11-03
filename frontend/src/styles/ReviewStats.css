@@ -1,0 +1,156 @@
+.review-stats-container {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 20px 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stats-header {
+  margin-bottom: 24px;
+}
+
+.stats-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.total-reviews {
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.overall-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.overall-rating-circle {
+  width: 120px;
+  height: 120px;
+  border: 6px solid white;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.rating-number {
+  font-size: 2.5rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.rating-max {
+  font-size: 1.25rem;
+  opacity: 0.8;
+}
+
+.rating-label {
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.detailed-stats {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.detailed-stats h4 {
+  margin: 0 0 16px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.stat-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stat-item {
+  display: grid;
+  grid-template-columns: 140px 1fr 70px;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.stat-bar-container {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.stat-bar {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.5s ease;
+}
+
+.stat-value {
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.stats-loading,
+.stats-error,
+.stats-no-data {
+  text-align: center;
+  padding: 40px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  color: #888;
+}
+
+.stats-error {
+  color: #e74c3c;
+  background: #fee;
+}
+
+@media (max-width: 768px) {
+  .review-stats-container {
+    padding: 16px;
+  }
+
+  .overall-rating-circle {
+    width: 100px;
+    height: 100px;
+    border-width: 4px;
+  }
+
+  .rating-number {
+    font-size: 2rem;
+  }
+
+  .rating-max {
+    font-size: 1rem;
+  }
+
+  .stat-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .stat-value {
+    text-align: left;
+  }
+}

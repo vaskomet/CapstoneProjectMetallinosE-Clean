@@ -116,11 +116,19 @@ export const UnifiedChatProvider = ({ children }) => {
           const { room_id, message } = data;
           chatLog.message(`New message in room ${room_id}`, message);
           
-          // Add message to state
-          setMessages(prev => ({
-            ...prev,
-            [room_id]: [...(prev[room_id] || []), message]
-          }));
+          // Add message to state (with deduplication)
+          setMessages(prev => {
+            const existingMessages = prev[room_id] || [];
+            // Check if this message already exists by ID
+            if (existingMessages.some(m => m.id === message.id)) {
+              chatLog.debug(`Duplicate message ${message.id} ignored`);
+              return prev; // Skip duplicate
+            }
+            return {
+              ...prev,
+              [room_id]: [...existingMessages, message]
+            };
+          });
           
           // Update room list
           setRooms(prev => prev.map(room => {
@@ -137,10 +145,16 @@ export const UnifiedChatProvider = ({ children }) => {
           
           // Update unread count if not from current user
           if (message.sender.id !== user?.id) {
-            setUnreadCounts(prev => ({
-              ...prev,
-              [room_id]: (prev[room_id] || 0) + 1
-            }));
+            setUnreadCounts(prev => {
+              const newCount = (prev[room_id] || 0) + 1;
+              const newCounts = {
+                ...prev,
+                [room_id]: newCount
+              };
+              console.log(`📊 Unread count updated for room ${room_id}: ${newCount}`, newCounts);
+              chatLog.debug(`Unread count for room ${room_id}: ${prev[room_id] || 0} → ${newCount}`);
+              return newCounts;
+            });
           }
           break;
           
@@ -388,6 +402,13 @@ export const UnifiedChatProvider = ({ children }) => {
    * Calculate total unread count across all rooms
    */
   const totalUnreadCount = Object.values(unreadCounts).reduce((sum, count) => sum + count, 0);
+  
+  /**
+   * Log total unread count changes for debugging
+   */
+  useEffect(() => {
+    console.log(`🔔 Total unread count changed: ${totalUnreadCount}`, unreadCounts);
+  }, [totalUnreadCount, unreadCounts]);
   
   /**
    * UI state management

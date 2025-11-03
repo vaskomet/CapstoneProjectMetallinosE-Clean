@@ -9,6 +9,7 @@
  */
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cleanerSearchAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 
@@ -18,6 +19,7 @@ const CleanerSearch = ({
   multiSelect = true,
   onMessageCleaner = null // Optional: callback when clicking message button for individual cleaner
 }) => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useState({
     latitude: '',
     longitude: '',
@@ -54,7 +56,6 @@ const CleanerSearch = ({
   };
 
   const handleUseTestLocation = async () => {
-    // Use Athens center (Syntagma Square) for testing
     const testLocation = {
       latitude: 37.9755,
       longitude: 23.7348
@@ -65,7 +66,49 @@ const CleanerSearch = ({
       latitude: testLocation.latitude,
       longitude: testLocation.longitude
     }));
-    toast.success('Using test location: Athens (Syntagma Square)');
+    toast.success('Using test location: Athens Centre (Syntagma Square)');
+    
+    // Auto-search with test location
+    await handleSearch({
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude,
+      max_radius: searchParams.max_radius
+    });
+  };
+
+  const handleUseTestLocationKifisia = async () => {
+    const testLocation = {
+      latitude: 38.0746,
+      longitude: 23.8098
+    };
+    
+    setSearchParams(prev => ({
+      ...prev,
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude
+    }));
+    toast.success('Using test location: Kifisia (North Suburbs)');
+    
+    // Auto-search with test location
+    await handleSearch({
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude,
+      max_radius: searchParams.max_radius
+    });
+  };
+
+  const handleUseTestLocationGlyfada = async () => {
+    const testLocation = {
+      latitude: 37.8652,
+      longitude: 23.7530
+    };
+    
+    setSearchParams(prev => ({
+      ...prev,
+      latitude: testLocation.latitude,
+      longitude: testLocation.longitude
+    }));
+    toast.success('Using test location: Glyfada (Coastal South)');
     
     // Auto-search with test location
     await handleSearch({
@@ -142,7 +185,7 @@ const CleanerSearch = ({
         <div className="space-y-4">
           {/* Step 1: Get Location */}
           <div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 mb-3">
               <button
                 onClick={handleGetCurrentLocation}
                 disabled={isSearching}
@@ -154,16 +197,44 @@ const CleanerSearch = ({
                 </svg>
                 <span>{isSearching ? 'Getting Location...' : 'Use My GPS'}</span>
               </button>
-              
+            </div>
+            
+            <div className="text-center text-sm text-gray-500 mb-2">
+              Or try test locations:
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={handleUseTestLocation}
                 disabled={isSearching}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
-                <span>Test (Athens)</span>
+                <span>Athens Centre</span>
+              </button>
+              
+              <button
+                onClick={handleUseTestLocationKifisia}
+                disabled={isSearching}
+                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                <span>Kifisia</span>
+              </button>
+              
+              <button
+                onClick={handleUseTestLocationGlyfada}
+                disabled={isSearching}
+                className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-sm hover:shadow-md"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                <span>Glyfada</span>
               </button>
             </div>
             
@@ -297,6 +368,21 @@ const CleanerSearch = ({
                           <span>Message</span>
                         </button>
                       )}
+                      
+                      {/* View Profile Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/cleaner/${cleaner.id}`);
+                        }}
+                        className="ml-2 flex-shrink-0 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
+                        title={`View ${cleaner.first_name}'s profile`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>View Profile</span>
+                      </button>
                     </div>
                   </div>
                 );
@@ -310,3 +396,4 @@ const CleanerSearch = ({
 };
 
 export default CleanerSearch;
+

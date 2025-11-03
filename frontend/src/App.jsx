@@ -22,6 +22,8 @@ import FindCleaners from './pages/FindCleaners';
 import Payments from './pages/Payments';
 import Payouts from './pages/Payouts';
 import AdminFinancials from './pages/AdminFinancials';
+import CleanerProfilePage from './components/CleanerProfilePage';
+import ClientProfilePage from './components/ClientProfilePage';
 // import PaymentHistory from './pages/PaymentHistory.jsx';
 // import StripeConnect from './pages/StripeConnect.jsx';
 import './utils/globalSetup'; // Initialize global error handling
@@ -108,6 +110,14 @@ function App() {
                       <Profile />
                     </ProtectedRoute>
                   } 
+                />
+                <Route 
+                  path="/cleaner/:cleanerId" 
+                  element={<CleanerProfilePage />} 
+                />
+                <Route 
+                  path="/client/:clientId" 
+                  element={<ClientProfilePage />} 
                 />
                 <Route 
                   path="/payments" 

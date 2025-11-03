@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'chat',  # Real-time chat functionality
     'notifications',  # Real-time notifications
     'payments',  # Payment processing with Stripe
+    'reviews',  # Review and rating system for clients and cleaners
 ]
 
 MIDDLEWARE = [

@@ -4,19 +4,32 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useToast } from '../contexts/ToastContext';
+import { useUnifiedChat } from '../contexts/UnifiedChatContext';
 import { cleaningJobsAPI } from '../services/api';
 import { jobPhotosAPI } from '../services/jobLifecycleAPI';
+import ReviewForm from './ReviewForm';
+import ReviewList from './ReviewList';
+import ReviewStats from './ReviewStats';
 
 const CompletedJobsDashboard = () => {
+  const navigate = useNavigate();
   const { user } = useUser();
   const toast = useToast();
+  const { createDirectMessage } = useUnifiedChat();
   const [completedJobs, setCompletedJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobPhotos, setJobPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [photosLoading, setPhotosLoading] = useState(false);
+  
+  // Review states
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [canReview, setCanReview] = useState(false);
+  const [reviewEligibility, setReviewEligibility] = useState(null);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
 
   useEffect(() => {
     fetchCompletedJobs();
@@ -51,9 +64,175 @@ const CompletedJobsDashboard = () => {
     }
   };
 
-  const handleJobSelect = (job) => {
+  const handleJobSelect = async (job) => {
     setSelectedJob(job);
+    setShowReviewForm(false); // Reset review form when selecting new job
     fetchJobPhotos(job.id);
+    checkReviewEligibility(job.id);
+  };
+
+  // Check if user can review this job
+  const checkReviewEligibility = async (jobId) => {
+    console.log('🔍 Checking review eligibility for job:', jobId);
+    
+    // Reset states
+    setCanReview(false);
+    setReviewEligibility(null);
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        console.error('❌ No access token found');
+        setCanReview(false);
+        setReviewEligibility({ can_review: false, reason: 'Please log in to leave a review.' });
+        return;
+      }
+      
+      const response = await fetch(`http://localhost:8000/api/reviews/can-review/${jobId}/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        console.error('❌ API returned error:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error details:', errorData);
+        setCanReview(false);
+        setReviewEligibility({ can_review: false, reason: 'Unable to check review eligibility.' });
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('✅ Review eligibility response:', data);
+      console.log('   can_review:', data.can_review);
+      console.log('   reason:', data.reason);
+      
+      setCanReview(data.can_review === true);
+      setReviewEligibility(data);
+      
+      console.log('📊 State updated - canReview:', data.can_review);
+    } catch (error) {
+      console.error('❌ Failed to check review eligibility:', error);
+      setCanReview(false);
+      setReviewEligibility({ can_review: false, reason: 'Network error. Please try again.' });
+    }
+  };
+
+  // Submit review
+  const handleReviewSubmit = async (reviewData) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch('http://localhost:8000/api/reviews/', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(reviewData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(Object.values(errorData)[0] || 'Failed to submit review');
+      }
+
+      toast.success('Review submitted successfully!');
+      setShowReviewForm(false);
+      setCanReview(false);
+      // Refresh eligibility
+      checkReviewEligibility(selectedJob.id);
+    } catch (error) {
+      toast.error(error.message || 'Failed to submit review');
+      throw error;
+    }
+  };
+
+  // Handle review response submission
+  const handleResponseSubmit = async (reviewId, responseText) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`http://localhost:8000/api/reviews/${reviewId}/response/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ response_text: responseText })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit response');
+      }
+
+      toast.success('Response submitted successfully!');
+      // Reload to show new response
+      window.location.reload();
+    } catch (error) {
+      toast.error(error.message || 'Failed to submit response');
+      throw error;
+    }
+  };
+
+  // Handle starting a direct message with cleaner or client
+  const handleStartMessage = async (otherUser, userType) => {
+    setIsCreatingChat(true);
+    try {
+      const room = await createDirectMessage(otherUser.id);
+      
+      if (room) {
+        toast.success(`Started conversation with ${otherUser.first_name} ${otherUser.last_name}`);
+        // Navigate to the messages page
+        navigate('/messages');
+      }
+    } catch (error) {
+      console.error('Failed to start conversation:', error);
+      toast.error('Failed to start conversation. Please try again.');
+    } finally {
+      setIsCreatingChat(false);
+    }
+  };
+
+  // Handle review flag
+  const handleFlag = async (reviewId) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const reason = prompt('Please select a reason:\n1. Inappropriate Content\n2. Harassment\n3. Spam\n4. False Information\n5. Other');
+      
+      const reasonMap = {
+        '1': 'inappropriate',
+        '2': 'harassment',
+        '3': 'spam',
+        '4': 'false_info',
+        '5': 'other'
+      };
+
+      if (!reason || !reasonMap[reason]) {
+        return;
+      }
+
+      const details = prompt('Additional details (optional):');
+
+      const response = await fetch(`http://localhost:8000/api/reviews/${reviewId}/flag/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          reason: reasonMap[reason],
+          details: details || ''
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to flag review');
+      }
+
+      toast.success('Review flagged successfully');
+    } catch (error) {
+      toast.error(error.message || 'Failed to flag review');
+    }
   };
 
   const formatDate = (dateString) => {
@@ -496,13 +675,17 @@ const CompletedJobsDashboard = () => {
                                 </div>
                                 <div className="flex flex-col space-y-2">
                                   <button 
-                                    className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors"
-                                    onClick={() => {
-                                      // TODO: Implement messaging functionality
-                                      toast.info('Messaging feature coming soon!');
-                                    }}
+                                    className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors"
+                                    onClick={() => navigate(`/cleaner/${selectedJob.cleaner.id}`)}
                                   >
-                                    Message Cleaner
+                                    View Profile
+                                  </button>
+                                  <button 
+                                    className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleStartMessage(selectedJob.cleaner, 'cleaner')}
+                                    disabled={isCreatingChat}
+                                  >
+                                    {isCreatingChat ? 'Starting...' : 'Message Cleaner'}
                                   </button>
                                   <button 
                                     className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-md hover:bg-green-100 transition-colors"
@@ -521,13 +704,34 @@ const CompletedJobsDashboard = () => {
 
                         {user?.role === 'cleaner' && selectedJob.client && (
                           <div>
-                            <h3 className="text-sm font-medium text-gray-500">Client</h3>
-                            <p className="text-gray-900">
-                              {selectedJob.client.first_name} {selectedJob.client.last_name}
-                            </p>
-                            {selectedJob.client.email && (
-                              <p className="text-sm text-gray-600">{selectedJob.client.email}</p>
-                            )}
+                            <h3 className="text-sm font-medium text-gray-500 mb-2">Client</h3>
+                            <div className="bg-gray-50 rounded-lg p-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {selectedJob.client.first_name} {selectedJob.client.last_name}
+                                  </p>
+                                  {selectedJob.client.email && (
+                                    <p className="text-sm text-gray-600">{selectedJob.client.email}</p>
+                                  )}
+                                </div>
+                                <div className="flex flex-col space-y-2">
+                                  <button 
+                                    className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors"
+                                    onClick={() => navigate(`/client/${selectedJob.client.id}`)}
+                                  >
+                                    View Profile
+                                  </button>
+                                  <button 
+                                    className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => handleStartMessage(selectedJob.client, 'client')}
+                                    disabled={isCreatingChat}
+                                  >
+                                    {isCreatingChat ? 'Starting...' : 'Message Client'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -573,21 +777,99 @@ const CompletedJobsDashboard = () => {
                             <p className="text-gray-900 italic">"{selectedJob.client_review}"</p>
                           </div>
                         )}
-                        {user?.role === 'client' && !selectedJob.client_rating && !selectedJob.client_review && (
-                          <div className="bg-blue-50 rounded-lg p-4">
-                            <p className="text-blue-800 text-sm">
-                              💡 You can leave a review and rating for this cleaning service to help other clients and provide feedback to your cleaner.
+                      </div>
+                    )}
+
+                    {/* NEW REVIEW SYSTEM - Bidirectional Reviews */}
+                    {selectedJob && (
+                      <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                          {user?.role === 'client' ? '⭐ Review Your Cleaner' : '⭐ Review Your Client'}
+                        </h3>
+                        <p className="text-gray-600 text-sm mb-4">
+                          {user?.role === 'client' 
+                            ? '💡 Share your experience to help other clients and provide feedback.'
+                            : '💡 Share your experience working with this client.'}
+                        </p>
+                        
+                        {/* Debug info - remove after testing */}
+                        <div className="text-xs text-gray-400 mb-2">
+                          Debug: canReview={String(canReview)}, showForm={String(showReviewForm)}, hasEligibility={String(!!reviewEligibility)}
+                        </div>
+                        
+                        {canReview && !showReviewForm && (
+                          <button 
+                            className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-md hover:shadow-lg"
+                            onClick={() => {
+                              console.log('🖱️ Leave a Review button clicked!');
+                              setShowReviewForm(true);
+                            }}
+                          >
+                            ✍️ Leave a Review
+                          </button>
+                        )}
+                        
+                        {!canReview && reviewEligibility && (
+                          <div className="bg-white rounded-md p-3 border border-gray-200">
+                            <p className="text-sm text-gray-600">
+                              <span className="font-medium">Status:</span> {reviewEligibility.reason}
                             </p>
-                            <button 
-                              className="mt-2 px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-200 rounded-md hover:bg-blue-50 transition-colors"
-                              onClick={() => {
-                                // TODO: Implement review functionality
-                                toast.info('Review feature coming soon!');
-                              }}
-                            >
-                              Leave a Review
-                            </button>
                           </div>
+                        )}
+                        
+                        {!reviewEligibility && (
+                          <div className="bg-white rounded-md p-3 border border-gray-200">
+                            <p className="text-sm text-gray-500 animate-pulse">
+                              Checking review eligibility...
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Review Form Section (Collapsible) */}
+                    {showReviewForm && canReview && selectedJob && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <ReviewForm
+                          jobId={selectedJob.id}
+                          revieweeName={
+                            user?.role === 'client' 
+                              ? `${selectedJob.cleaner?.first_name || ''} ${selectedJob.cleaner?.last_name || ''}`.trim()
+                              : `${selectedJob.client?.first_name || ''} ${selectedJob.client?.last_name || ''}`.trim()
+                          }
+                          onSubmit={handleReviewSubmit}
+                          onCancel={() => setShowReviewForm(false)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Reviews Section - Show reviews for the cleaner/client */}
+                    {selectedJob && (
+                      <div className="mt-6 pt-6 border-t border-gray-200">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">
+                          Reviews {user?.role === 'client' ? 'for this Cleaner' : 'for this Client'}
+                        </h3>
+                        {user?.role === 'client' && selectedJob.cleaner && (
+                          <>
+                            <ReviewStats userId={selectedJob.cleaner.id} />
+                            <ReviewList
+                              revieweeId={selectedJob.cleaner.id}
+                              currentUser={user}
+                              onResponseSubmit={handleResponseSubmit}
+                              onFlag={handleFlag}
+                            />
+                          </>
+                        )}
+                        {user?.role === 'cleaner' && selectedJob.client && (
+                          <>
+                            <ReviewStats userId={selectedJob.client.id} />
+                            <ReviewList
+                              revieweeId={selectedJob.client.id}
+                              currentUser={user}
+                              onResponseSubmit={handleResponseSubmit}
+                              onFlag={handleFlag}
+                            />
+                          </>
                         )}
                       </div>
                     )}

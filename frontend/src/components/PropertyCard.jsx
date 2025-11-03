@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import { useUser } from '../contexts/UserContext';
 import { propertiesAPI } from '../services/api';
+import AddressSearch from './AddressSearch';
 import 'leaflet/dist/leaflet.css';
 
 // Fix for default icons in Leaflet with Webpack
@@ -16,6 +17,21 @@ let DefaultIcon = L.divIcon({
   iconAnchor: [12, 12],
 });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+/**
+ * Map Click Handler for editing mode
+ */
+const MapClickHandler = ({ onLocationSelect, isEditing }) => {
+  useMapEvents({
+    click: (e) => {
+      if (isEditing) {
+        const { lat, lng } = e.latlng;
+        onLocationSelect(lat, lng);
+      }
+    },
+  });
+  return null;
+};
 
 /**
  * PropertyCard Component
@@ -43,13 +59,42 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
     postal_code: property.postal_code || '',
     property_type: property.property_type || '',
     size_sqft: property.size_sqft || '',
-    notes: property.notes || ''
+    notes: property.notes || '',
+    latitude: property.latitude || '',
+    longitude: property.longitude || ''
+  });
+  const [editMapLocation, setEditMapLocation] = useState({
+    lat: parseFloat(property.latitude) || 37.9755,
+    lng: parseFloat(property.longitude) || 23.7348
   });
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
 
   // Check if current user owns this property
   const isOwner = user && property.owner && user.email === property.owner.email;
+
+  // Initialize edit mode with current property data
+  const handleEditStart = () => {
+    setEditData({
+      address_line1: property.address_line1 || '',
+      address_line2: property.address_line2 || '',
+      city: property.city || '',
+      state: property.state || '',
+      postal_code: property.postal_code || '',
+      property_type: property.property_type || '',
+      size_sqft: property.size_sqft || '',
+      notes: property.notes || '',
+      latitude: property.latitude || '',
+      longitude: property.longitude || ''
+    });
+    
+    setEditMapLocation({
+      lat: parseFloat(property.latitude) || 37.9755,
+      lng: parseFloat(property.longitude) || 23.7348
+    });
+    
+    setIsEditing(true);
+  };
 
   // Handle property deletion
   const handleDelete = async () => {
@@ -77,13 +122,58 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
     setError('');
 
     try {
-      await propertiesAPI.update(property.id, editData);
+      // Create update payload without latitude/longitude from editData
+      const { latitude: _, longitude: __, ...addressData } = editData;
+      const updatePayload = { ...addressData };
+      
+      // Add location coordinates as numbers with limited precision if they exist
+      if (editMapLocation.lat && editMapLocation.lng) {
+        // Limit to 8 decimal places for precision (max 11 digits total for lat, 12 for lng)
+        // Format: XX.XXXXXXXX (lat) or XXX.XXXXXXXX (lng)
+        updatePayload.latitude = parseFloat(parseFloat(editMapLocation.lat).toFixed(8));
+        updatePayload.longitude = parseFloat(parseFloat(editMapLocation.lng).toFixed(8));
+      }
+      
+      console.log('📤 Sending update payload:', updatePayload);
+      
+      await propertiesAPI.update(property.id, updatePayload);
       setIsEditing(false);
       onPropertyUpdate(); // Refresh the properties list
     } catch (err) {
-      setError('Failed to update property. Please try again.');
       console.error('Update property error:', err);
+      console.error('Error response:', err.response?.data);
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Failed to update property. Please try again.');
     }
+  };
+
+  // Handle map location selection during editing
+  const handleLocationSelect = (lat, lng) => {
+    setEditMapLocation({ lat, lng });
+    setEditData(prev => ({
+      ...prev,
+      latitude: lat.toFixed(8),
+      longitude: lng.toFixed(8)
+    }));
+  };
+
+  // Handle address selection from search during editing
+  const handleAddressSelect = (addressData) => {
+    // Update form with selected address
+    setEditData(prev => ({
+      ...prev,
+      address_line1: addressData.address.address_line1,
+      city: addressData.address.city,
+      state: addressData.address.state,
+      postal_code: addressData.address.postal_code,
+      latitude: addressData.coordinates.lat.toString(),
+      longitude: addressData.coordinates.lng.toString()
+    }));
+
+    // Update map location
+    setEditMapLocation({
+      lat: addressData.coordinates.lat,
+      lng: addressData.coordinates.lng
+    });
   };
 
   // Handle input changes
@@ -131,6 +221,13 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
       <div className="mb-4">
         {isEditing ? (
           <form onSubmit={handleUpdate} className="space-y-3">
+            {/* Address Search with Geocoding */}
+            <AddressSearch onAddressSelect={handleAddressSelect} />
+            
+            <div className="text-sm text-gray-600 text-center py-2">
+              ─────── OR fill manually ───────
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Address Line 1
@@ -252,6 +349,44 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
               />
             </div>
 
+            {/* Location Editing Map */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Property Location
+              </label>
+              <p className="text-sm text-gray-600 mb-2">
+                Click on the map to update the property location
+              </p>
+              <div className="h-64 rounded-lg overflow-hidden border border-gray-300 mb-2 relative z-0">
+                <MapContainer
+                  center={[editMapLocation.lat, editMapLocation.lng]}
+                  zoom={13}
+                  style={{ height: '100%', width: '100%', zIndex: 0 }}
+                  scrollWheelZoom={false}
+                  key={`edit-${property.id}`}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <Marker position={[editMapLocation.lat, editMapLocation.lng]}>
+                    <Popup>
+                      <div className="text-center">
+                        <p className="font-medium">Property Location</p>
+                        <p className="text-xs text-gray-600">
+                          {typeof editMapLocation.lat === 'number' ? editMapLocation.lat.toFixed(6) : editMapLocation.lat}, {typeof editMapLocation.lng === 'number' ? editMapLocation.lng.toFixed(6) : editMapLocation.lng}
+                        </p>
+                      </div>
+                    </Popup>
+                  </Marker>
+                  <MapClickHandler onLocationSelect={handleLocationSelect} isEditing={true} />
+                </MapContainer>
+              </div>
+              <div className="text-sm text-green-600 bg-green-50 p-2 rounded">
+                📍 Current: {typeof editMapLocation.lat === 'number' ? editMapLocation.lat.toFixed(6) : editMapLocation.lat}, {typeof editMapLocation.lng === 'number' ? editMapLocation.lng.toFixed(6) : editMapLocation.lng}
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -301,34 +436,37 @@ const PropertyCard = ({ property, onPropertyUpdate }) => {
         )}
       </div>
 
-      {/* Map Integration */}
-      <div className="mb-4 h-48 rounded-lg overflow-hidden border border-gray-200">
-        <MapContainer
-          center={getMapCenter()}
-          zoom={13}
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={false}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <Marker position={getMapCenter()}>
-            <Popup>
-              <div className="text-center">
-                <p className="font-medium">{property.property_type || 'Property'}</p>
-                <p className="text-sm text-gray-600">{formatAddress()}</p>
-              </div>
-            </Popup>
-          </Marker>
-        </MapContainer>
-      </div>
+      {/* Map Integration - Only show when NOT editing */}
+      {!isEditing && (
+        <div className="mb-4 h-48 rounded-lg overflow-hidden border border-gray-200 relative z-0">
+          <MapContainer
+            center={getMapCenter()}
+            zoom={13}
+            style={{ height: '100%', width: '100%', zIndex: 0 }}
+            scrollWheelZoom={false}
+            zoomControl={true}
+          >
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <Marker position={getMapCenter()}>
+              <Popup>
+                <div className="text-center">
+                  <p className="font-medium">{property.property_type || 'Property'}</p>
+                  <p className="text-sm text-gray-600">{formatAddress()}</p>
+                </div>
+              </Popup>
+            </Marker>
+          </MapContainer>
+        </div>
+      )}
 
       {/* Action Buttons - Only show for property owners */}
       {isOwner && !isEditing && (
         <div className="flex gap-2">
           <button
-            onClick={() => setIsEditing(true)}
+            onClick={handleEditStart}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors flex-1"
           >
             Edit Property

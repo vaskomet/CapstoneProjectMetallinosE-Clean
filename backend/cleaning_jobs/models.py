@@ -330,5 +330,43 @@ class CleaningJob(models.Model):
                 allowed = ['cancelled']  # Can only cancel if not in start window
         
         return allowed
+    
+    def can_be_reviewed_by(self, user):
+        """
+        Check if a user can leave a review for this job.
+        Business rules:
+        - Job must be completed
+        - Job must have completion date (actual_end_time)
+        - User must be a participant (client or cleaner)
+        - Review must be within 30 days of completion
+        - User must not have already reviewed this job
+        """
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Job must be completed
+        if self.status != 'completed':
+            return False, "Job must be completed before it can be reviewed."
+        
+        # Job must have completion date
+        if not self.actual_end_time:
+            return False, "Job must have a completion date to be reviewed."
+        
+        # User must be a participant
+        if user != self.client and user != self.cleaner:
+            return False, "You can only review jobs you participated in."
+        
+        # Must be within 30-day review window
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        if self.actual_end_time < thirty_days_ago:
+            return False, "Review window (30 days) has expired."
+        
+        # Check if user has already reviewed this job
+        from reviews.models import Review
+        existing_review = Review.objects.filter(job=self, reviewer=user).exists()
+        if existing_review:
+            return False, "You have already reviewed this job."
+        
+        return True, "You can review this job."
 
 # Run python manage.py makemigrations after adding 'cleaning_jobs' to INSTALLED_APPS.

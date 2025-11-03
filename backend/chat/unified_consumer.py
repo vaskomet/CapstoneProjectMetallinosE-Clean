@@ -259,6 +259,22 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
                 'message': message_data
             }
         )
+        
+        # Also notify all room participants individually (for unread count updates)
+        # This ensures users see the badge update even if they're not subscribed to this room
+        room = await self._get_room(room_id)
+        if room:
+            participants = await database_sync_to_async(list)(room.participants.all())
+            for participant in participants:
+                # Send to each participant's personal channel (user_{id}, not chat_user_{id})
+                await self.channel_layer.group_send(
+                    f'user_{participant.id}',
+                    {
+                        'type': 'broadcast_new_message',
+                        'room_id': room_id,
+                        'message': message_data
+                    }
+                )
     
     async def handle_mark_read(self, data):
         """
@@ -458,6 +474,14 @@ class UnifiedChatConsumer(AsyncWebsocketConsumer):
             return False
         except ChatRoom.DoesNotExist:
             return False
+    
+    @database_sync_to_async
+    def _get_room(self, room_id):
+        """Get a room by ID."""
+        try:
+            return ChatRoom.objects.select_related('job').prefetch_related('participants').get(id=room_id)
+        except ChatRoom.DoesNotExist:
+            return None
     
     @database_sync_to_async
     def _get_user_rooms(self):

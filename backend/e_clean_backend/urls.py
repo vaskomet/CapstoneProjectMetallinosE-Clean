@@ -19,6 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
+from users.profile_views import CleanerPublicProfileView, ClientPublicProfileView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -53,8 +54,13 @@ urlpatterns = [
     # Endpoints: payment intents, confirmations, Stripe Connect, refunds
     path('api/payments/', include('payments.urls')),
     
-    # Placeholder for future app URLs (reviews)
-    # path('api/reviews/', include('reviews.urls')),
+    # Review and rating system
+    # Endpoints: reviews, responses, statistics, flags, moderation
+    path('api/reviews/', include('reviews.urls')),
+    
+    # Public user profiles (for viewing cleaner profiles and reviews)
+    path('api/profile/cleaner/<int:user_id>/', CleanerPublicProfileView.as_view(), name='cleaner-public-profile'),
+    path('api/profile/client/<int:user_id>/', ClientPublicProfileView.as_view(), name='client-public-profile'),
 ]
 
 # Serve media files in development

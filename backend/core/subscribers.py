@@ -399,8 +399,32 @@ class EventSubscriber:
     
     def handle_chat_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Handle chat-related events."""
-        # Future implementation for chat events
-        pass
+        try:
+            if event_type == 'message_received':
+                self.handle_message_received(data)
+        except Exception as e:
+            logger.error(f"Error handling chat event {event_type}: {e}")
+    
+    def handle_message_received(self, data: Dict[str, Any]) -> None:
+        """Handle new message event - notify the recipient."""
+        recipient_id = data.get('recipient_id')
+        
+        if recipient_id:
+            try:
+                recipient = User.objects.get(id=recipient_id)
+                self.create_notification(
+                    user=recipient,
+                    template_key='message_received',
+                    context={
+                        'sender_name': data.get('sender_name', 'Someone'),
+                        'content_preview': data.get('content_preview', 'New message'),
+                        'room_id': data.get('room_id'),
+                        'message_id': data.get('message_id')
+                    }
+                )
+                logger.info(f"Created message_received notification for user {recipient_id}")
+            except User.DoesNotExist:
+                logger.error(f"Recipient not found: {recipient_id}")
     
     def handle_payment_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Handle payment-related events."""
