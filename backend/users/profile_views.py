@@ -16,12 +16,37 @@ from reviews.models import Review, ReviewRating
 class CleanerPublicProfileView(APIView):
     """
     Public cleaner profile view - shows reviews, ratings, job stats.
-    Accessible to anyone (no authentication required).
+    If authenticated client views, also shows their history with this cleaner.
     """
     permission_classes = [drf_permissions.AllowAny]
+    # Explicitly use JWT authentication (don't set authentication_classes at all to use defaults)
     
     def get(self, request, user_id):
         """Get public profile for a cleaner"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Force authentication attempt even with AllowAny
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        
+        # Debug: Check if Authorization header exists
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        logger.info(f'🔍 Authorization header: {auth_header[:50] if auth_header else "MISSING"}...')
+        
+        jwt_auth = JWTAuthentication()
+        try:
+            auth_result = jwt_auth.authenticate(request)
+            if auth_result is not None:
+                request.user, request.auth = auth_result
+                logger.info(f'✅ Manual JWT auth successful: User {request.user.id} ({request.user.username})')
+            else:
+                logger.info(f'⚠️ JWT authenticate returned None (no token found)')
+        except Exception as e:
+            logger.info(f'⚠️ Manual JWT auth failed: {e}')
+            pass  # If auth fails, continue as anonymous
+        
+        logger.info(f'Profile request - User authenticated: {request.user.is_authenticated}, User: {request.user}, Role: {getattr(request.user, "role", None)}')
+        
         cleaner = get_object_or_404(User, id=user_id, role='cleaner')
         
         # Basic info
@@ -34,6 +59,54 @@ class CleanerPublicProfileView(APIView):
             'bio': cleaner.bio if hasattr(cleaner, 'bio') else None,
             'profile_picture': cleaner.profile_picture.url if hasattr(cleaner, 'profile_picture') and cleaner.profile_picture else None,
         }
+        
+        # Check if viewing client has history with this cleaner
+        client_history = None
+        if request.user.is_authenticated and request.user.role == 'client':
+            from properties.models import Property
+            from django.db.models import Avg as AvgFunc
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Get jobs this cleaner did for the viewing client
+            client_jobs = CleaningJob.objects.filter(
+                client=request.user,
+                cleaner=cleaner,
+                status='completed'
+            ).select_related('property').order_by('-scheduled_date')
+            
+            logger.info(f'Client {request.user.id} viewing cleaner {cleaner.id}: Found {client_jobs.count()} completed jobs')
+            
+            if client_jobs.exists():
+                # Build history data
+                jobs_list = []
+                for job in client_jobs[:10]:  # Limit to 10 most recent
+                    job_data = {
+                        'id': job.id,
+                        'scheduled_date': job.scheduled_date.isoformat() if job.scheduled_date else None,
+                        'property_address': f"{job.property.address_line1}, {job.property.city}" if job.property else None,
+                        'property_type': job.property.property_type if job.property else None,
+                        'client_rating': job.client_rating,
+                        'client_review': job.client_review,
+                        'final_price': float(job.final_price) if job.final_price else None,
+                        'services_description': job.services_description,
+                    }
+                    jobs_list.append(job_data)
+                
+                # Calculate average rating for this client's jobs
+                avg_rating = client_jobs.aggregate(
+                    avg_rating=AvgFunc('client_rating')
+                )['avg_rating']
+                
+                client_history = {
+                    'total_jobs': client_jobs.count(),
+                    'average_rating': round(float(avg_rating), 2) if avg_rating else None,
+                    'recent_jobs': jobs_list
+                }
+                
+                logger.info(f'Built client history: {client_history["total_jobs"]} jobs')
+        
+        profile_data['client_history'] = client_history
         
         # Job stats
         completed_jobs = CleaningJob.objects.filter(

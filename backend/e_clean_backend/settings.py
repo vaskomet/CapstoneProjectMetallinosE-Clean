@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     'notifications',  # Real-time notifications
     'payments',  # Payment processing with Stripe
     'reviews',  # Review and rating system for clients and cleaners
+    'recommendations',  # AI-powered recommendation system (rule-based + neural network)
 ]
 
 MIDDLEWARE = [
@@ -259,6 +260,15 @@ STRIPE_CONNECT_CLIENT_ID = os.environ.get('STRIPE_CONNECT_CLIENT_ID', '')
 PLATFORM_FEE_PERCENTAGE = float(os.environ.get('PLATFORM_FEE_PERCENTAGE', '0.15'))
 
 # ===========================
+# ML Service Configuration
+# ===========================
+
+ML_SERVICE_URL = os.environ.get('ML_SERVICE_URL', 'http://ml-service:8001')
+ML_SERVICE_TIMEOUT = float(os.environ.get('ML_SERVICE_TIMEOUT', '10.0'))
+ML_SERVICE_MAX_RETRIES = int(os.environ.get('ML_SERVICE_MAX_RETRIES', '3'))
+
+
+# ===========================
 # Logging Configuration
 # ===========================
 
@@ -306,5 +316,67 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'recommendations': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
+
+# ============================================================================
+# RECOMMENDATION SYSTEM CONFIGURATION
+# ============================================================================
+
+# Recommendation mode: 'rule_based' | 'neural' | 'ensemble'
+# - rule_based: Uses only weighted scoring algorithm (works immediately, interpretable)
+# - neural: Uses only neural network (requires trained model, higher accuracy)
+# - ensemble: Combines both with configurable weights (recommended for production)
+RECOMMENDATION_MODE = os.getenv('RECOMMENDATION_MODE', 'ensemble')
+
+# Ensemble weights (used when mode='ensemble')
+# Adjust these based on A/B testing results
+# Start with higher rule-based weight, gradually increase neural as it proves effective
+RECOMMENDATION_ENSEMBLE_WEIGHTS = {
+    'rule_based': float(os.getenv('RECOMMENDATION_RULE_WEIGHT', '0.6')),
+    'neural': float(os.getenv('RECOMMENDATION_NEURAL_WEIGHT', '0.4')),
+}
+
+# Cache TTL for recommendation results (in seconds)
+# Recommendations are expensive to calculate, so we cache them
+# Invalidate when new reviews are posted or cleaner scores updated
+RECOMMENDATION_CACHE_TTL = int(os.getenv('RECOMMENDATION_CACHE_TTL', '3600'))  # 1 hour
+
+# Model storage directory (for PyTorch checkpoints)
+RECOMMENDATION_MODELS_DIR = BASE_DIR / 'recommendations' / 'models'
+
+# Neural network settings (for training)
+RECOMMENDATION_NN_CONFIG = {
+    'cf_embedding_dim': 64,          # Collaborative filtering embedding size
+    'content_embedding_dim': 16,     # Content-based embedding size
+    'cf_hidden_dims': [128, 64, 32], # Collaborative MLP layer sizes
+    'content_hidden_dims': [128, 64, 32],  # Content MLP layer sizes
+    'dropout': 0.3,                  # Dropout rate for regularization
+    'learning_rate': 0.001,          # Initial learning rate
+    'batch_size': 256,               # Training batch size
+    'max_epochs': 50,                # Maximum training epochs
+    'early_stopping_patience': 5,    # Early stopping patience
+}
+
+# Feature extraction settings
+RECOMMENDATION_FEATURE_CONFIG = {
+    'athens_center_lat': 37.9838,    # Athens city center latitude
+    'athens_center_lng': 23.7275,    # Athens city center longitude
+    'max_distance_km': 50,           # Maximum service distance for normalization
+    'property_type_map': {           # Property type to index mapping
+        'apartment': 0,
+        'house': 1,
+        'office': 2,
+        'commercial': 3,
+    },
+}
+
+# A/B testing configuration (optional - for future use)
+RECOMMENDATION_AB_TEST_ENABLED = os.getenv('RECOMMENDATION_AB_TEST_ENABLED', 'false').lower() == 'true'
+RECOMMENDATION_AB_TEST_SPLIT = float(os.getenv('RECOMMENDATION_AB_TEST_SPLIT', '0.5'))  # 50/50 split
+

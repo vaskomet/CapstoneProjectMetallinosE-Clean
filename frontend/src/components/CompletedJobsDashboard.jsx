@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
 import { useToast } from '../contexts/ToastContext';
 import { useUnifiedChat } from '../contexts/UnifiedChatContext';
@@ -16,6 +16,7 @@ import ReviewStats from './ReviewStats';
 
 const CompletedJobsDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useUser();
   const toast = useToast();
   const { createDirectMessage } = useUnifiedChat();
@@ -34,6 +35,18 @@ const CompletedJobsDashboard = () => {
   useEffect(() => {
     fetchCompletedJobs();
   }, []);
+
+  // Handle pre-selected job from navigation state (e.g., from cleaner profile)
+  useEffect(() => {
+    if (location.state?.selectedJobId && completedJobs.length > 0) {
+      const jobToSelect = completedJobs.find(job => job.id === location.state.selectedJobId);
+      if (jobToSelect) {
+        handleJobSelect(jobToSelect);
+        // Clear the navigation state so it doesn't re-trigger
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, completedJobs, navigate, location.pathname]);
 
   const fetchCompletedJobs = async () => {
     try {

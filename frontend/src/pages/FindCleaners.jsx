@@ -89,12 +89,12 @@ const FindCleaners = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <h3 className="text-sm font-semibold text-blue-900 mb-1">How to use:</h3>
+                <h3 className="text-sm font-semibold text-blue-900 mb-1">How it works:</h3>
                 <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Use your GPS location or search by city/postal code</li>
-                  <li>• Browse the search results to find cleaners in your area</li>
-                  <li>• Click the "Message" button next to any cleaner to start a conversation</li>
-                  <li>• You'll be redirected to the Messages page to continue chatting</li>
+                  <li>• Share your location or pick a test location</li>
+                  <li>• We'll show all cleaners who service your area (based on their preferences)</li>
+                  <li>• Results are ranked by match quality and proximity</li>
+                  <li>• Click "Message" to start a conversation with any cleaner</li>
                 </ul>
               </div>
             </div>

@@ -31,6 +31,7 @@ export { serviceAreasAPI } from './serviceAreas';
 export { chatAPI } from './chat';
 export { cleanerSearchAPI } from './cleaners';
 export { paymentsAPI } from './payments';
+export { recommendationsAPI } from './recommendations';
 
 // Default export for backwards compatibility
 export { default } from './core';

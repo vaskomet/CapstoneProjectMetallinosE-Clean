@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -106,6 +106,7 @@ import 'react-toastify/dist/ReactToastify.css';
 const CleaningJobsPool = () => {
   const { user, isAuthenticated } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]); // Array of all jobs visible to current user
   const [properties, setProperties] = useState([]); // User's properties (clients only)
@@ -243,6 +244,19 @@ const CleaningJobsPool = () => {
       fetchProperties();
     }
   }, [isAuthenticated, user?.role]);
+
+  // Handle pre-selected job from navigation state (e.g., from cleaner profile)
+  useEffect(() => {
+    if (location.state?.selectedJobId && jobs.length > 0) {
+      const jobToSelect = jobs.find(job => job.id === location.state.selectedJobId);
+      if (jobToSelect) {
+        setSelectedJob(jobToSelect);
+        setShowJobModal(true);
+        // Clear the navigation state so it doesn't re-trigger
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, jobs, navigate, location.pathname]);
 
   // Handle URL parameters for highlighting/opening specific jobs
   useEffect(() => {

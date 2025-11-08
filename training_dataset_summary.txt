@@ -1,0 +1,17 @@
+TRAINING DATASET SUMMARY
+============================================================
+
+Total Completed Jobs: 4493
+Total Clients: 500
+Total Cleaners: 200
+Total Properties: 665
+Total Bids: 24648
+Total Reviews: 4493
+
+Property Type Distribution:
+  Apartment: 1378 (30.7%)
+  House: 1465 (32.6%)
+  Office: 1650 (36.7%)
+  Commercial: 0 (0.0%)
+
+============================================================

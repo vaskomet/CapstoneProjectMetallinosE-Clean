@@ -10,17 +10,24 @@ ENV DJANGO_SETTINGS_MODULE=e_clean_backend.settings
 WORKDIR /app
 
 # Install system dependencies
+# Note: build-essential needed for PyTorch CPU build from source if needed
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         postgresql-client \
         build-essential \
         libpq-dev \
         netcat-traditional \
+        # Lightweight math libraries for NumPy/PyTorch
+        libopenblas-dev \
+        liblapack-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+# Install PyTorch CPU-only from the official CPU index
+# Using 2.6.0 or later (available in CPU index)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy project
 COPY . /app/

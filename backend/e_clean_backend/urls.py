@@ -58,6 +58,10 @@ urlpatterns = [
     # Endpoints: reviews, responses, statistics, flags, moderation
     path('api/reviews/', include('reviews.urls')),
     
+    # ML-powered recommendation system
+    # Endpoints: cleaner recommendations, job recommendations, ML service status
+    path('api/recommendations/', include('recommendations.urls')),
+    
     # Public user profiles (for viewing cleaner profiles and reviews)
     path('api/profile/cleaner/<int:user_id>/', CleanerPublicProfileView.as_view(), name='cleaner-public-profile'),
     path('api/profile/client/<int:user_id>/', ClientPublicProfileView.as_view(), name='client-public-profile'),
