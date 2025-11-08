@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -106,6 +106,7 @@ import 'react-toastify/dist/ReactToastify.css';
 const CleaningJobsPool = () => {
   const { user, isAuthenticated } = useUser();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [jobs, setJobs] = useState([]); // Array of all jobs visible to current user
   const [properties, setProperties] = useState([]); // User's properties (clients only)
   const [serviceTypes, setServiceTypes] = useState([]); // Available cleaning service types
@@ -242,6 +243,34 @@ const CleaningJobsPool = () => {
       fetchProperties();
     }
   }, [isAuthenticated, user?.role]);
+
+  // Handle URL parameters for highlighting/opening specific jobs
+  useEffect(() => {
+    const highlightParam = searchParams.get('highlight');
+    const jobParam = searchParams.get('job');
+    const jobId = highlightParam || jobParam;
+    
+    if (jobId && jobs.length > 0) {
+      // Find the job in the loaded jobs
+      const job = jobs.find(j => j.id === parseInt(jobId));
+      
+      if (job) {
+        console.log('📌 Opening job from notification:', job);
+        setSelectedJob(job);
+        setShowJobModal(true);
+        
+        // Clear the URL parameter after opening the modal
+        setSearchParams({});
+        
+        // Show a toast to indicate the job was highlighted
+        toast.info(`Viewing job: ${job.services_description || 'Cleaning Job'}`, {
+          autoClose: 3000
+        });
+      } else {
+        console.warn('⚠️ Job not found in current jobs list:', jobId);
+      }
+    }
+  }, [jobs, searchParams, setSearchParams]);
 
   // Refetch jobs when location filter changes (for cleaners only)
   useEffect(() => {

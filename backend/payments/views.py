@@ -9,6 +9,7 @@ from django.db.models import Q
 import stripe
 
 from .models import Payment, StripeAccount, Transaction, Refund, PayoutRequest
+from core.events import publish_event
 from .serializers import (
     PaymentSerializer,
     PaymentIntentCreateSerializer,
@@ -243,8 +244,16 @@ class ConfirmPaymentView(views.APIView):
                         trans.completed_at = timezone.now()
                         trans.save()
                     
-                    # TODO: Emit event for real-time notification
-                    # TODO: Send email notification to client and cleaner
+                    # Publish event for real-time notification to cleaner
+                    publish_event('payment_received', {
+                        'payment_id': payment.id,
+                        'cleaner_id': payment.cleaner.id,
+                        'client_id': payment.client.id,
+                        'client_name': payment.client.get_full_name() or payment.client.username,
+                        'job_id': job.id,
+                        'job_title': job.title or 'Cleaning Job',
+                        'amount': str(payment.amount),
+                    })
                 
                 return Response({
                     'message': 'Payment confirmed successfully',

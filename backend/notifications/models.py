@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.utils import timezone
 
 
 class Notification(models.Model):
@@ -76,14 +77,14 @@ class Notification(models.Model):
         """Mark notification as read"""
         if not self.is_read:
             self.is_read = True
-            self.read_at = models.timezone.now()
+            self.read_at = timezone.now()
             self.save(update_fields=['is_read', 'read_at'])
     
     def mark_as_delivered(self):
         """Mark notification as delivered"""
         if not self.is_delivered:
             self.is_delivered = True
-            self.delivered_at = models.timezone.now()
+            self.delivered_at = timezone.now()
             self.save(update_fields=['is_delivered', 'delivered_at'])
 
 

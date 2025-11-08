@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useUser } from '../contexts/UserContext';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 /**
@@ -12,6 +13,7 @@ import api from '../services/api';
  */
 const Payments = () => {
   const { user } = useUser();
+  const navigate = useNavigate();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -205,7 +207,12 @@ const Payments = () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {payments.map((payment) => (
-                    <tr key={payment.id} className="hover:bg-gray-50">
+                    <tr 
+                      key={payment.id} 
+                      onClick={() => navigate(`/jobs?job=${payment.job_id}`)}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      title="Click to view job details"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(payment.paid_at || payment.created_at)}
                       </td>
@@ -253,21 +260,31 @@ const Payments = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(payment.status)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <button
-                          onClick={() => window.open(`/api/payments/${payment.id}/receipt`, '_blank')}
-                          className="text-blue-600 hover:text-blue-900 font-medium mr-3"
-                        >
-                          Receipt
-                        </button>
-                        {payment.can_request_refund && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex space-x-3">
                           <button
-                            onClick={() => handleRequestRefund(payment.id)}
-                            className="text-red-600 hover:text-red-900 font-medium"
+                            onClick={() => navigate(`/jobs?job=${payment.job_id}`)}
+                            className="text-blue-600 hover:text-blue-900 font-medium"
+                            title="View job details"
                           >
-                            Refund
+                            Job Details
                           </button>
-                        )}
+                          <button
+                            onClick={() => window.open(`/api/payments/${payment.id}/receipt`, '_blank')}
+                            className="text-gray-600 hover:text-gray-900 font-medium"
+                            title="View receipt"
+                          >
+                            Receipt
+                          </button>
+                          {payment.can_request_refund && (
+                            <button
+                              onClick={() => handleRequestRefund(payment.id)}
+                              className="text-red-600 hover:text-red-900 font-medium"
+                            >
+                              Refund
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

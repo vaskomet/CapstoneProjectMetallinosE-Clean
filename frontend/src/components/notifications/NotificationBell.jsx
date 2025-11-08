@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../../hooks/useWebSocket';
 
@@ -58,6 +58,25 @@ const NotificationBell = ({ className = "" }) => {
   // Ref for dropdown container to handle outside clicks
   const dropdownRef = useRef(null);
 
+  // Deduplicate notifications by ID (safety check)
+  const uniqueNotifications = useMemo(() => {
+    const seen = new Set();
+    return notifications.filter(notification => {
+      if (seen.has(notification.id)) {
+        console.warn('⚠️ Duplicate notification detected:', notification.id);
+        return false;
+      }
+      seen.add(notification.id);
+      return true;
+    });
+  }, [notifications]);
+
+  // Debug: Log when unread count changes
+  useEffect(() => {
+    console.log('🔔 NotificationBell: unreadCount changed to:', unreadCount);
+    console.log('🔔 NotificationBell: notifications count:', uniqueNotifications.length);
+  }, [unreadCount, uniqueNotifications.length]);
+
   // Close dropdown when clicking outside - prevents UI clutter
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -76,9 +95,14 @@ const NotificationBell = ({ className = "" }) => {
    * @param {Object} notification - The notification object clicked
    */
   const handleNotificationClick = (notification) => {
+    console.log('👆 Notification clicked:', notification);
+    
     // Mark as read only if not already read
     if (!notification.is_read) {
+      console.log('📧 Marking notification as read:', notification.id);
       markAsRead(notification.id);
+    } else {
+      console.log('✅ Notification already read:', notification.id);
     }
 
     // Close dropdown
@@ -86,7 +110,10 @@ const NotificationBell = ({ className = "" }) => {
 
     // Navigate to action URL if available (e.g., job details, chat)
     if (notification.action_url) {
+      console.log('🔗 Navigating to:', notification.action_url);
       navigate(notification.action_url);
+    } else {
+      console.log('⚠️ No action URL for notification');
     }
   };
 
@@ -214,7 +241,7 @@ const NotificationBell = ({ className = "" }) => {
           {/* Notifications List Container */}
           <div className="max-h-64 overflow-y-auto">
             {/* Empty state when no notifications */}
-            {notifications.length === 0 ? (
+            {uniqueNotifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-gray-500">
                 <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -223,7 +250,7 @@ const NotificationBell = ({ className = "" }) => {
               </div>
             ) : (
               // Render up to 10 most recent notifications
-              notifications.slice(0, 10).map((notification) => (
+              uniqueNotifications.slice(0, 10).map((notification) => (
                 <div
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
@@ -254,7 +281,7 @@ const NotificationBell = ({ className = "" }) => {
                       </p>
 
                       {/* Priority badge - only shown for non-medium priority */}
-                      {notification.priority !== 'medium' && (
+                      {notification.priority && notification.priority !== 'medium' && (
                         <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full mt-2 ${
                           notification.priority === 'urgent' ? 'bg-red-100 text-red-800' :
                           notification.priority === 'high' ? 'bg-orange-100 text-orange-800' :

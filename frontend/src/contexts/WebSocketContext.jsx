@@ -183,7 +183,9 @@ export const WebSocketProvider = ({ children }) => {
       };
 
       notificationWs.current.onmessage = (event) => {
+        console.log('📥 Raw WebSocket message received:', event.data);
         const data = JSON.parse(event.data);
+        console.log('📦 Parsed notification data:', data);
         handleNotificationMessage(data);
       };
 
@@ -254,21 +256,52 @@ export const WebSocketProvider = ({ children }) => {
   }, [user]); // Only recreate when user changes
 
   const handleNotificationMessage = (data) => {
+    console.log('🔔 Handling notification message, type:', data.type);
+    
     switch (data.type) {
       case 'new_notification':
-        setNotifications(prev => [data.notification, ...prev]);
-        setUnreadCount(prev => prev + 1);
+        console.log('➕ Adding new notification:', data.notification);
+        setNotifications(prev => {
+          console.log('📊 Previous notifications count:', prev.length);
+          // Check if notification already exists to prevent duplicates
+          const exists = prev.some(n => n.id === data.notification.id);
+          if (exists) {
+            console.log('⚠️ Notification already exists, skipping duplicate');
+            return prev;
+          }
+          const updated = [data.notification, ...prev];
+          console.log('📊 Updated notifications count:', updated.length);
+          return updated;
+        });
+        setUnreadCount(prev => {
+          console.log('📊 Previous unread count:', prev);
+          const updated = prev + 1;
+          console.log('📊 Updated unread count:', updated);
+          return updated;
+        });
         
-        // Show toast notification
-        if (window.showToast) {
-          window.showToast(data.notification.title, {
-            type: getNotificationToastType(data.notification.priority),
-            duration: 5000
-          });
+        // Show toast notification with enhanced formatting
+        if (window.globalToast) {
+          const notification = data.notification;
+          const notificationType = notification.notification_type || notification.type;
+          
+          // Create rich notification message for jobs
+          let toastMessage = notification.title;
+          if (notificationType === 'job_created') {
+            toastMessage = `🆕 ${notification.title}\n${notification.message}`;
+          } else if (notificationType === 'bid_received') {
+            toastMessage = `💰 ${notification.title}\n${notification.message}`;
+          } else {
+            toastMessage = `${notification.title}\n${notification.message}`;
+          }
+          
+          const toastType = getNotificationToastType(notification.priority);
+          window.globalToast[toastType](toastMessage, 6000);
         }
         break;
 
       case 'notification_read':
+        console.log('✅ Marking notification as read:', data.notification_id);
         setNotifications(prev => 
           prev.map(n => 
             n.id === data.notification_id 
@@ -276,18 +309,36 @@ export const WebSocketProvider = ({ children }) => {
               : n
           )
         );
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        setUnreadCount(prev => {
+          const newCount = Math.max(0, prev - 1);
+          console.log('📊 Unread count after marking read:', newCount);
+          return newCount;
+        });
         break;
 
       case 'unread_count':
+        console.log('📊 Received unread count:', data.count);
         setUnreadCount(data.count);
         break;
 
       case 'recent_notifications':
-        setNotifications(data.notifications);
+        console.log('📋 Received recent notifications:', data.notifications.length);
+        // Deduplicate notifications by ID
+        setNotifications(prev => {
+          const newNotifications = data.notifications;
+          const prevIds = new Set(prev.map(n => n.id));
+          const uniqueNew = newNotifications.filter(n => !prevIds.has(n.id));
+          
+          if (uniqueNew.length !== newNotifications.length) {
+            console.log(`⚠️ Filtered out ${newNotifications.length - uniqueNew.length} duplicate(s)`);
+          }
+          
+          return [...uniqueNew, ...prev];
+        });
         break;
 
       case 'all_notifications_read':
+        console.log('✅ Marking all notifications as read');
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
         setUnreadCount(0);
         break;
@@ -353,6 +404,7 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const markNotificationAsRead = (notificationId) => {
+    console.log('📤 Sending mark_read request for notification:', notificationId);
     sendNotificationAction('mark_read', { notification_id: notificationId });
   };
 

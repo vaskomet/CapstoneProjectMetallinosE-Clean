@@ -211,13 +211,14 @@ class EventSubscriber:
                 self.handle_bid_accepted_notification(data)
             elif event_type == 'bid_rejected':
                 self.handle_bid_rejected(data)
+            elif event_type == 'payment_received':
+                self.handle_payment_received(data)
             
             # Send WebSocket update for all job events
             self.send_websocket_update('job_updates', {
                 'event_type': event_type,
                 'data': data
             })
-            
         except Exception as e:
             logger.error(f"Error handling job event {event_type}: {e}")
     
@@ -392,6 +393,28 @@ class EventSubscriber:
             except User.DoesNotExist:
                 logger.error(f"Cleaner not found: {cleaner_id}")
     
+    def handle_payment_received(self, data: Dict[str, Any]) -> None:
+        """Handle payment received event - notify the cleaner."""
+        cleaner_id = data.get('cleaner_id')
+        
+        if cleaner_id:
+            try:
+                cleaner = User.objects.get(id=cleaner_id)
+                self.create_notification(
+                    user=cleaner,
+                    template_key='payment_received',
+                    context={
+                        'job_title': data.get('job_title', 'Job'),
+                        'client_name': data.get('client_name', 'Client'),
+                        'amount': data.get('amount', '0'),
+                        'job_id': data.get('job_id'),
+                        'payment_id': data.get('payment_id')
+                    }
+                )
+                logger.info(f"Created payment_received notification for cleaner {cleaner_id}")
+            except User.DoesNotExist:
+                logger.error(f"Cleaner not found: {cleaner_id}")
+    
     def handle_notification_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Handle notification-specific events."""
         # Future implementation for notification-specific events
@@ -472,28 +495,89 @@ class EventSubscriber:
                 logger.error(f"Notification template not found: {template_key}")
                 return
             
+            # Generate action URL based on notification type and context
+            action_url = self.generate_action_url(template_key, context)
+            
             # Create notification
             notification = Notification.objects.create(
                 recipient=user,
                 title=template.title_template.format(**context),
                 message=template.message_template.format(**context),
-                notification_type=template_key
+                notification_type=template_key,
+                action_url=action_url
             )
             
             # Send WebSocket notification
-            self.send_user_notification(user.id, {
+            notification_data = {
                 'id': notification.id,
                 'title': notification.title,
                 'message': notification.message,
                 'type': notification.notification_type,
+                'notification_type': notification.notification_type,  # Add both for compatibility
                 'created_at': notification.created_at.isoformat(),
-                'is_read': notification.is_read
-            })
+                'is_read': notification.is_read,
+                'action_url': notification.action_url
+            }
             
-            logger.info(f"Created notification for user {user.id}: {template_key}")
+            logger.info(f"Created notification for user {user.id}: {template_key} with action_url: {notification.action_url}")
+            self.send_user_notification(user.id, notification_data)
             
         except Exception as e:
             logger.error(f"Error creating notification: {e}")
+    
+    def generate_action_url(self, notification_type: str, context: Dict[str, Any]) -> str:
+        """
+        Generate action URL based on notification type.
+        
+        Args:
+            notification_type: Type of notification
+            context: Context data containing IDs and other info
+            
+        Returns:
+            str: Frontend route to navigate to
+        """
+        job_id = context.get('job_id')
+        bid_id = context.get('bid_id')
+        message_id = context.get('message_id')
+        room_id = context.get('room_id')
+        
+        # Job created notification - cleaners go to jobs page with job auto-selected
+        if notification_type == 'job_created':
+            if job_id:
+                return f'/jobs?job={job_id}'
+            return '/jobs'
+        
+        # Job status notifications - navigate to jobs page with job selected
+        elif notification_type in ['job_accepted', 'job_started', 'job_completed', 
+                                   'job_cancelled', 'job_status_changed']:
+            if job_id:
+                return f'/jobs?job={job_id}'
+            return '/jobs'
+        
+        # Bid-related notifications - navigate to jobs page with job selected
+        elif notification_type in ['bid_received', 'bid_accepted', 'bid_rejected']:
+            if job_id:
+                return f'/jobs?job={job_id}'
+            return '/jobs'
+        
+        # Message notifications - navigate to chat
+        elif notification_type == 'message_received':
+            if room_id:
+                return f'/messages?room={room_id}'
+            return '/messages'
+        
+        # Payment notifications - navigate to payment history
+        elif notification_type in ['payment_received', 'payment_sent']:
+            return '/payments'
+        
+        # Review notifications - navigate to jobs page
+        elif notification_type in ['review_received', 'review_reminder']:
+            if job_id:
+                return f'/jobs?job={job_id}'
+            return '/jobs'
+        
+        # Default: jobs page
+        return '/jobs'
     
     def send_websocket_update(self, group_name: str, message: Dict[str, Any]) -> None:
         """
