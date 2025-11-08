@@ -61,6 +61,20 @@ npm run dev
 - Both options include Redis in Docker
 - Never run frontend without Redis - notifications won't work
 
+### Unified Chat Architecture
+- Active chat endpoint: `ws/chat/` (single persistent connection, room subscription messages)
+- Notifications endpoint: `ws/notifications/<user_id>/`
+- Legacy chat endpoints (`ws/chat/<room_name>/`, `ws/job_chat/<job_id>/`) are **deprecated** and slated for removal.
+
+### Database Behavior
+- **Docker dev**: PostgreSQL container (recommended for parity with production)
+- **Pure local run** (no Docker db): Falls back to SQLite automatically if `POSTGRES_*` variables are removed/commented in `.env.dev.local`
+- Switching: comment/uncomment `POSTGRES_DB` (and related vars) → restart backend
+
+### Event System
+- Redis also powers a lightweight Pub/Sub event bus via `core/events.py` (no Celery workers configured despite older doc references)
+- Update any legacy references to “Celery background tasks” unless you introduce Celery explicitly.
+
 ### File Changes
 - **Option 1**: Changes reflect immediately in Docker (hot reload enabled)
 - **Option 2**: Changes reflect immediately in local server
@@ -116,6 +130,9 @@ docker compose -f docker-compose.dev.yml down
 Both options use the same environment variables:
 - `REACT_APP_API_URL=http://localhost:8000/api`
 - `REACT_APP_WS_URL=ws://localhost:8000/ws`
+ - PostgreSQL (Docker): `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`
+ - Redis: `REDIS_URL=redis://:redis_dev_password@localhost:6379/0`
+ - Stripe: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`
 
 ## Troubleshooting
 

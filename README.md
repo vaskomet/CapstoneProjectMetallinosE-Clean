@@ -16,14 +16,16 @@ The E-Clean Platform is a modern web application designed to connect clients wit
   - **API:** Django Rest Framework (DRF)
   - **Authentication:** JWT (JSON Web Tokens)
   - **WebSockets:** Django Channels (for real-time features)
-  - **Task Queue:** Celery with Redis
+  - **Realtime transport:** Channels over Redis (no Celery workers configured)
+  - **Event bus:** Redis Pub/Sub via `backend/core/events.py`
 - **Frontend:**
   - **Framework:** React 19.1.1
   - **Styling:** Tailwind CSS
   - **Maps:** Leaflet.js with react-leaflet
   - **Calendar:** FullCalendar.js
 - **Database:**
-  - **Development:** SQLite
+  - **Development (local):** SQLite fallback when PostgreSQL env vars are not set
+  - **Development (Docker):** PostgreSQL (recommended)
   - **Production:** PostgreSQL
 - **Infrastructure:**
   - **Message Broker:** Redis (for WebSocket channels and Celery)
@@ -38,6 +40,7 @@ The E-Clean Platform is a modern web application designed to connect clients wit
 - **Auto-Room Creation:** Chat rooms automatically created when a cleaning job is accepted
 - **Job Context:** Chat messages include job details and status for better communication
 - **Message Persistence:** Chat history stored in database for reference and dispute resolution
+- **Unified Consumer:** Single WebSocket endpoint `ws/chat/` multiplexes all rooms (legacy per-room endpoints are deprecated)
 
 ### Secondary Feature: Real-Time Notifications
 - **Booking Updates:** Instant notifications for status changes (accepted, started, completed)
@@ -72,6 +75,15 @@ The E-Clean Platform is a modern web application designed to connect clients wit
 - **Database Design:** Optimized chat models with proper indexing
 - **Frontend Integration:** React hooks for WebSocket management
 - **Testing Strategy:** Unit tests, integration tests, and load testing
+
+### Database selection in development
+- Local runs (without Docker): Django uses SQLite unless `POSTGRES_*` variables are set in `.env.dev.local`.
+- Docker development: `docker-compose.dev.yml` provides PostgreSQL and Redis on localhost; keep `POSTGRES_*` enabled to use Postgres.
+
+### WebSocket endpoints
+- Unified chat: `ws/chat/`
+- Notifications: `ws/notifications/<user_id>/`
+- Legacy (deprecated): `ws/chat/<room_name>/`, `ws/job_chat/<job_id>/`
 
 ### Branching Strategy
 - **`main`:** This branch contains production-ready code. All deployments to the live server are made from this branch.
