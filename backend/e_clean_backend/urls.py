@@ -16,7 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
+from users.profile_views import CleanerPublicProfileView, ClientPublicProfileView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -34,9 +37,34 @@ urlpatterns = [
     # Supports CleaningJob CRUD operations with JWT authentication and role-based permissions
     # Endpoints: list/create jobs, job details management, cleaner status updates
     path('api/jobs/', include('cleaning_jobs.urls')),
-
-    # Placeholder for future app URLs (payments, reviews, notifications)
-    # path('api/payments/', include('payments.urls')),
-    # path('api/reviews/', include('reviews.urls')),
+    
+    # Enhanced job lifecycle management with photos, notifications, and workflow tracking
+    # Endpoints: photo uploads, workflow actions (confirm/start/finish), notifications
+    path('api/lifecycle/', include('job_lifecycle.urls')),
+    
+    # Real-time chat functionality
+    # Endpoints: chat rooms, messages, participants
+    path('api/chat/', include('chat.urls')),
+    
+    # Real-time notifications
+    # Endpoints: notifications, preferences, bulk sending
+    path('', include('notifications.urls')),
+    
+    # Payment processing with Stripe
+    # Endpoints: payment intents, confirmations, Stripe Connect, refunds
+    path('api/payments/', include('payments.urls')),
+    
+    # Review and rating system
+    # Endpoints: reviews, responses, statistics, flags, moderation
+    path('api/reviews/', include('reviews.urls')),
+    
+    # Public user profiles (for viewing cleaner profiles and reviews)
+    path('api/profile/cleaner/<int:user_id>/', CleanerPublicProfileView.as_view(), name='cleaner-public-profile'),
+    path('api/profile/client/<int:user_id>/', ClientPublicProfileView.as_view(), name='client-public-profile'),
 ]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

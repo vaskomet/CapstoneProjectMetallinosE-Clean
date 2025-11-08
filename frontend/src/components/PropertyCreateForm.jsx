@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import { useUser } from '../contexts/UserContext';
 import { propertiesAPI } from '../services/api';
 import { toast } from 'react-toastify';
+import AddressSearch from './AddressSearch';
 
 // Fix for default icons in Leaflet with Webpack
 import L from 'leaflet';
+import 'leaflet-control-geocoder/dist/Control.Geocoder.css';
+import 'leaflet-control-geocoder';
 
 let DefaultIcon = L.divIcon({
   html: '<div style="background-color: #ef4444; width: 25px; height: 25px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
@@ -135,6 +138,30 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
     toast.info('Location cleared');
   };
 
+  // Handle address selection from geocoding
+  const handleAddressSelect = (addressData) => {
+    // Update form with selected address
+    setFormData(prev => ({
+      ...prev,
+      address_line1: addressData.address.address_line1,
+      city: addressData.address.city,
+      state: addressData.address.state,
+      postal_code: addressData.address.postal_code,
+      country: addressData.address.country || 'US',
+      latitude: addressData.coordinates.lat.toString(),
+      longitude: addressData.coordinates.lng.toString()
+    }));
+
+    // Update map location
+    setMapLocation({
+      lat: addressData.coordinates.lat,
+      lng: addressData.coordinates.lng,
+      hasLocation: true
+    });
+
+    toast.success('Address selected and location set!');
+  };
+
   // Validate form data
   const validateForm = () => {
     const newErrors = {};
@@ -220,7 +247,6 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         }
       }
 
-      console.log('Sending property data:', propertyData);
       await propertiesAPI.create(propertyData);
       toast.success('Property created successfully!');
       
@@ -282,6 +308,13 @@ const PropertyCreateForm = ({ onPropertyCreated, onCancel }) => {
         {/* Address Section */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium text-gray-900">Address Information</h3>
+          
+          {/* Address Search with Geocoding */}
+          <AddressSearch onAddressSelect={handleAddressSelect} />
+          
+          <div className="text-sm text-gray-600 text-center">
+            — OR fill in manually —
+          </div>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -11,9 +11,20 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env.dev.local (for local development)
+# This file is in the project root (one level up from backend/)
+env_path = BASE_DIR.parent / '.env.dev.local'
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ Loaded environment variables from {env_path}")
+else:
+    print(f"⚠️  Warning: {env_path} not found, using system environment variables")
 
 
 # Quick-start development settings - unsuitable for production
@@ -31,6 +42,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # WebSocket support - must be first
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,9 +52,16 @@ INSTALLED_APPS = [
     # 'django.contrib.gis',  # Temporarily disabled - will be re-enabled with PostGIS setup
     'rest_framework',
     'corsheaders',
+    'channels',  # WebSocket support
+    'core',  # Core services (events, subscribers)
     'users',
     'properties',
     'cleaning_jobs',
+    'job_lifecycle',  # Enhanced job management with photos, notifications, and workflow tracking
+    'chat',  # Real-time chat functionality
+    'notifications',  # Real-time notifications
+    'payments',  # Payment processing with Stripe
+    'reviews',  # Review and rating system for clients and cleaners
 ]
 
 MIDDLEWARE = [
@@ -86,12 +105,25 @@ WSGI_APPLICATION = 'e_clean_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Use PostgreSQL if environment variables are set (Docker), otherwise SQLite
+if os.environ.get('POSTGRES_DB'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB'),
+            'USER': os.environ.get('POSTGRES_USER'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -129,6 +161,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Media files (user uploads)
+MEDIA_URL = 'media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -139,9 +176,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
-# Custom authentication backend for email login
+# Custom authentication backend for email and username login
 AUTHENTICATION_BACKENDS = [
-    'users.backends.EmailBackend',
+    'users.backends.EmailUsernameBackend',
     'django.contrib.auth.backends.ModelBackend',
 ]
 
@@ -162,4 +199,112 @@ SIMPLE_JWT = {
     'SIGNING_KEY': SECRET_KEY,
     'VERIFYING_KEY': None,
     'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# ===========================
+# Django Channels Configuration
+# ===========================
+
+ASGI_APPLICATION = 'e_clean_backend.asgi.application'
+
+# Channel Layers Configuration for Redis
+# NOTE: Must match Redis password in docker-compose.dev.yml
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.environ.get('REDIS_URL', 'redis://:redis_dev_password@localhost:6379/0')],
+            'capacity': 1500,  # Maximum messages to store per channel
+            'expiry': 10,      # Message expiry time in seconds
+        },
+    },
+}
+
+# ===========================
+# Redis Pub/Sub Configuration
+# ===========================
+
+# Redis configuration for Pub/Sub events
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', 6379))
+REDIS_DB = int(os.environ.get('REDIS_DB', 0))
+REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', 'redis_dev_password')
+
+# Construct Redis URL with password
+# Format: redis://:password@host:port/db
+if REDIS_PASSWORD:
+    REDIS_URL = os.environ.get('REDIS_URL', f'redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
+else:
+    REDIS_URL = os.environ.get('REDIS_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}')
+
+# Event publishing settings
+EVENT_PUBLISHER_ENABLED = True
+EVENT_SUBSCRIBER_TOPICS = ['jobs', 'notifications', 'chat', 'payments']
+
+# WebSocket Settings
+WEBSOCKET_ACCEPT_ALL = True  # For development only
+
+# ===========================
+# Stripe Payment Configuration
+# ===========================
+
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# Stripe Connect (for cleaner payouts)
+STRIPE_CONNECT_CLIENT_ID = os.environ.get('STRIPE_CONNECT_CLIENT_ID', '')
+
+# Platform fee percentage (e.g., 15% = 0.15)
+PLATFORM_FEE_PERCENTAGE = float(os.environ.get('PLATFORM_FEE_PERCENTAGE', '0.15'))
+
+# ===========================
+# Logging Configuration
+# ===========================
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'payments': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'payments.webhooks': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }

@@ -1,17 +1,23 @@
 """
-CleaningJob API views for Django REST Framework.
-Supports CRUD operations with role-based permissions, status management, and dynamic pricing.
+CleaningJob and JobBid API views for Django REST Framework.
+Supports CRUD operations with role-based permissions, bidding system, and job lifecycle management.
 """
 
 from rest_framework import generics, permissions, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.decorators import action
 from django.utils import timezone
 from django.db import transaction
 
-from .models import CleaningJob
-from .serializers import CleaningJobSerializer, CleaningJobCreateSerializer
+from .models import CleaningJob, JobBid
+from .serializers import (
+    CleaningJobSerializer, 
+    CleaningJobCreateSerializer,
+    JobBidSerializer,
+    JobBidCreateSerializer
+)
 
 
 class CleaningJobListCreateView(generics.ListCreateAPIView):
@@ -27,36 +33,147 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         """
-        Filter queryset based on user role.
+        Filter queryset based on user role for bidding system.
         - Clients: see their own jobs
-        - Cleaners: see available jobs (pending, no cleaner) + their assigned jobs
+        - Cleaners: see available jobs (open_for_bids) + their assigned jobs
         - Admins: see all jobs
+        
+        Query Parameters:
+        - status: Filter by job status (e.g., 'completed', 'in_progress', 'open_for_bids')
         """
         user = self.request.user
         
         # Admin users can see all jobs for management purposes
         if hasattr(user, 'role') and user.role == 'admin':
-            return CleaningJob.objects.all().select_related(
-                'client', 'cleaner', 'property'
-            ).prefetch_related('services_requested')
+            queryset = CleaningJob.objects.all().select_related(
+                'client', 'cleaner', 'property', 'accepted_bid'
+            ).prefetch_related('bids__cleaner')
         
-        # Cleaners can see available jobs (pending, no cleaner assigned) + their assigned jobs
+        
+        # Cleaners can see available jobs (open_for_bids) within their service areas + their assigned jobs
         elif hasattr(user, 'role') and user.role == 'cleaner':
             from django.db.models import Q
-            return CleaningJob.objects.filter(
-                Q(cleaner=user) |  # Their assigned jobs
-                Q(cleaner__isnull=True, status='pending')  # Available jobs
-            ).select_related(
-                'client', 'cleaner', 'property'
-            ).prefetch_related('services_requested')
+            from users.models import ServiceArea
+            import math
+            
+            # Check for query parameters for filtering
+            service_area_id = self.request.query_params.get('service_area_id')
+            distance_km = self.request.query_params.get('distance_km')
+            
+            # Get cleaner's service areas
+            if service_area_id:
+                # Filter by specific service area
+                try:
+                    service_areas = ServiceArea.objects.filter(
+                        id=service_area_id, 
+                        cleaner=user, 
+                        is_active=True
+                    )
+                except (ValueError, ServiceArea.DoesNotExist):
+                    service_areas = ServiceArea.objects.none()
+            else:
+                # Get all active service areas
+                service_areas = ServiceArea.objects.filter(cleaner=user, is_active=True)
+            
+            # Handle distance-based filtering
+            if distance_km:
+                try:
+                    distance_km_value = float(distance_km)
+                    # Get cleaner's current location (we'll use the first service area center as fallback)
+                    first_area = service_areas.filter(
+                        area_type='radius',
+                        center_latitude__isnull=False,
+                        center_longitude__isnull=False
+                    ).first()
+                    
+                    if first_area:
+                        # Create a single large radius filter based on requested distance
+                        from django.db.models import F
+                        
+                        # Simple distance filtering - in production, use PostGIS
+                        # Convert Decimal to float for math operations
+                        center_lat_float = float(first_area.center_latitude)
+                        center_lng_float = float(first_area.center_longitude)
+                        
+                        lat_range = distance_km_value / 111.0  # Rough km to degrees conversion
+                        lng_range = distance_km_value / (111.0 * math.cos(math.radians(center_lat_float)))
+                        
+                        location_filter = Q(
+                            property__latitude__gte=center_lat_float - lat_range,
+                            property__latitude__lte=center_lat_float + lat_range,
+                            property__longitude__gte=center_lng_float - lng_range,
+                            property__longitude__lte=center_lng_float + lng_range,
+                            property__latitude__isnull=False,
+                            property__longitude__isnull=False
+                        )
+                        
+                        return CleaningJob.objects.filter(
+                            Q(cleaner=user) |  # Their assigned jobs
+                            (Q(status='open_for_bids') & location_filter)  # Available jobs within distance
+                        ).select_related(
+                            'client', 'cleaner', 'property', 'accepted_bid'
+                        ).prefetch_related('bids__cleaner')
+                except (ValueError, TypeError):
+                    pass  # Fall back to normal service area filtering
+            
+            if service_areas.exists():
+                # Filter jobs within service areas
+                location_filter = Q()
+                for area in service_areas:
+                    if area.area_type == 'city' and area.city:
+                        location_filter |= Q(property__city__icontains=area.city)
+                    elif area.area_type == 'radius' and all([
+                        area.center_latitude, area.center_longitude, area.radius_miles
+                    ]):
+                        # For radius-based filtering, we'll use a simple approach
+                        # In production, you'd want to use PostGIS for proper distance calculations
+                        # Convert Decimal to float for math operations
+                        radius_miles_float = float(area.radius_miles)
+                        center_lat_float = float(area.center_latitude)
+                        center_lng_float = float(area.center_longitude)
+                        
+                        lat_range = radius_miles_float * 1.609 / 111.0  # Convert miles to km to degrees
+                        lng_range = lat_range / math.cos(math.radians(center_lat_float))
+                        
+                        location_filter |= Q(
+                            property__latitude__gte=center_lat_float - lat_range,
+                            property__latitude__lte=center_lat_float + lat_range,
+                            property__longitude__gte=center_lng_float - lng_range,
+                            property__longitude__lte=center_lng_float + lng_range,
+                            property__latitude__isnull=False,
+                            property__longitude__isnull=False
+                        )
+                    elif area.area_type == 'postal_codes' and area.postal_codes:
+                        location_filter |= Q(property__postal_code__in=area.postal_codes)
+                
+                queryset = CleaningJob.objects.filter(
+                    Q(cleaner=user) |  # Their assigned jobs
+                    (Q(status='open_for_bids') & location_filter)  # Available jobs in their areas
+                ).select_related(
+                    'client', 'cleaner', 'property', 'accepted_bid'
+                ).prefetch_related('bids__cleaner')
+            else:
+                # If cleaner has no service areas, show only their assigned jobs
+                queryset = CleaningJob.objects.filter(
+                    cleaner=user
+                ).select_related(
+                    'client', 'cleaner', 'property', 'accepted_bid'
+                ).prefetch_related('bids__cleaner')
         
         # Clients can only see their own jobs
         else:
-            return CleaningJob.objects.filter(
+            queryset = CleaningJob.objects.filter(
                 client=user
             ).select_related(
-                'client', 'cleaner', 'property'
-            ).prefetch_related('services_requested')
+                'client', 'cleaner', 'property', 'accepted_bid'
+            ).prefetch_related('bids__cleaner')
+        
+        # Apply status filter if provided in query parameters
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
     
     def get_serializer_class(self):
         """
@@ -80,13 +197,13 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        # Create job with initial state
+        # Create job with initial state for bidding
         with transaction.atomic():
             cleaning_job = serializer.save()
             
             # Log job creation for audit purposes
             print(f"Job #{cleaning_job.id} created by {request.user.email} "
-                  f"for {cleaning_job.scheduled_date} at {cleaning_job.start_time}")
+                  f"for {cleaning_job.scheduled_date} - Budget: ${cleaning_job.client_budget}")
         
         # Return created job with full details
         response_serializer = CleaningJobSerializer(cleaning_job)
@@ -104,8 +221,8 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
     status transitions managed here with validation.
     """
     queryset = CleaningJob.objects.all().select_related(
-        'client', 'cleaner', 'property'
-    ).prefetch_related('services_requested')
+        'client', 'cleaner', 'property', 'accepted_bid'
+    ).prefetch_related('bids__cleaner')
     serializer_class = CleaningJobSerializer
     permission_classes = [IsAuthenticated]
     
@@ -117,7 +234,9 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         
         # Check ownership or admin privileges
+        # Allow access for: job client, assigned cleaner, or admin
         if (obj.client != user and 
+            obj.cleaner != user and
             not (hasattr(user, 'role') and user.role == 'admin')):
             raise PermissionDenied("You can only access your own jobs.")
         
@@ -134,7 +253,9 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = request.user
         
         # Validate permission to update
+        # Allow updates by: job client, assigned cleaner, or admin
         if (instance.client != user and 
+            instance.cleaner != user and
             not (hasattr(user, 'role') and user.role == 'admin')):
             raise PermissionDenied("You can only update your own jobs.")
         
@@ -150,12 +271,8 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
         with transaction.atomic():
             updated_instance = serializer.save()
             
-            # Recalculate pricing if services changed
-            if 'services_requested' in request.data:
-                services = updated_instance.services_requested.all()
-                total_cost = sum(service.base_price for service in services)
-                updated_instance.total_cost = total_cost
-                updated_instance.save()
+            # Note: Service-based pricing was replaced with bidding system
+            # Pricing is now determined by accepted bids rather than service selection
         
         return Response(CleaningJobSerializer(updated_instance).data)
     
@@ -183,10 +300,15 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
         Validate status transitions based on current state and user role.
         """
         current_status = instance.status
+        
+        # Define valid transitions based on the actual STATUS_CHOICES from the model
         valid_transitions = {
-            'pending': ['confirmed', 'cancelled'],
-            'confirmed': ['in_progress', 'cancelled'],
-            'in_progress': ['completed', 'cancelled'],
+            'open_for_bids': ['bid_accepted', 'cancelled'],
+            'bid_accepted': ['confirmed', 'cancelled'],
+            'confirmed': ['ready_to_start', 'cancelled'],
+            'ready_to_start': ['in_progress', 'cancelled'],
+            'in_progress': ['awaiting_review', 'cancelled'],
+            'awaiting_review': ['completed', 'cancelled'],
             'completed': [],  # No transitions from completed
             'cancelled': []   # No transitions from cancelled
         }
@@ -195,6 +317,37 @@ class CleaningJobDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise ValidationError(
                 f"Invalid status transition from {current_status} to {new_status}"
             )
+        
+        # Role-based transition restrictions
+        if hasattr(user, 'role'):
+            if user.role == 'cleaner' and instance.cleaner == user:
+                # Cleaners can only make specific transitions
+                cleaner_allowed_transitions = {
+                    'confirmed': ['ready_to_start'],
+                    'ready_to_start': ['in_progress'],
+                    'in_progress': ['awaiting_review']
+                }
+                
+                if current_status in cleaner_allowed_transitions:
+                    if new_status not in cleaner_allowed_transitions[current_status]:
+                        raise ValidationError(
+                            f"Cleaners cannot transition from {current_status} to {new_status}"
+                        )
+            elif user.role == 'client' and instance.client == user:
+                # Clients can make certain transitions
+                client_allowed_transitions = {
+                    'awaiting_review': ['completed'],
+                    'open_for_bids': ['cancelled'],
+                    'bid_accepted': ['cancelled'],
+                    'confirmed': ['cancelled']
+                }
+                
+                if current_status in client_allowed_transitions:
+                    if new_status not in client_allowed_transitions[current_status]:
+                        raise ValidationError(
+                            f"Clients cannot transition from {current_status} to {new_status}"
+                        )
+            # Admins can make any valid transition
 
 
 class CleaningJobStatusUpdateView(generics.UpdateAPIView):
@@ -349,3 +502,128 @@ class CleaningJobClaimView(generics.UpdateAPIView):
 # 3. List Jobs (GET /api/jobs/):
 #    Headers: Authorization: Bearer <jwt_token>
 #    Returns filtered jobs based on user role
+
+
+class JobBidListCreateView(generics.ListCreateAPIView):
+    """
+    List and create JobBid instances.
+    
+    - GET: Lists bids (cleaners see their own, clients see bids on their jobs)
+    - POST: Creates new bid (only cleaners can create bids)
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        """
+        Filter bids based on user role.
+        """
+        user = self.request.user
+        
+        if hasattr(user, 'role') and user.role == 'admin':
+            return JobBid.objects.all().select_related('job', 'cleaner')
+        elif hasattr(user, 'role') and user.role == 'cleaner':
+            return JobBid.objects.filter(cleaner=user).select_related('job', 'cleaner')
+        else:  # client
+            return JobBid.objects.filter(job__client=user).select_related('job', 'cleaner')
+    
+    def get_serializer_class(self):
+        """
+        Use different serializers for create vs list operations.
+        """
+        if self.request.method == 'POST':
+            return JobBidCreateSerializer
+        return JobBidSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """
+        Create new bid (only cleaners can bid).
+        """
+        if not (hasattr(request.user, 'role') and request.user.role == 'cleaner'):
+            raise PermissionDenied("Only cleaners can submit bids.")
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Check if job is open for bids
+        job = serializer.validated_data['job']
+        if job.status != 'open_for_bids':
+            raise ValidationError("This job is not accepting bids.")
+        
+        # Check if cleaner already has a bid on this job
+        if JobBid.objects.filter(job=job, cleaner=request.user).exists():
+            raise ValidationError("You have already submitted a bid for this job.")
+        
+        bid = serializer.save()
+        
+        # Return created bid with full details
+        response_serializer = JobBidSerializer(bid)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class JobBidDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, and delete JobBid instances.
+    """
+    queryset = JobBid.objects.all().select_related('job', 'cleaner')
+    serializer_class = JobBidSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_object(self):
+        """
+        Get bid with ownership validation.
+        """
+        obj = super().get_object()
+        user = self.request.user
+        
+        # Check ownership or if client owns the job
+        if (obj.cleaner != user and 
+            obj.job.client != user and
+            not (hasattr(user, 'role') and user.role == 'admin')):
+            raise PermissionDenied("You can only access your own bids or bids on your jobs.")
+        
+        return obj
+
+
+class AcceptBidView(generics.UpdateAPIView):
+    """
+    Accept a bid on a cleaning job (clients only).
+    """
+    queryset = JobBid.objects.all()
+    permission_classes = [IsAuthenticated]
+    
+    def patch(self, request, *args, **kwargs):
+        """
+        Accept a bid and assign the job to the cleaner.
+        """
+        bid = self.get_object()
+        
+        # Only job owner can accept bids
+        if bid.job.client != request.user:
+            raise PermissionDenied("Only the job owner can accept bids.")
+        
+        # Check if job is still open for bids
+        if bid.job.status != 'open_for_bids':
+            raise ValidationError("This job is no longer accepting bids.")
+        
+        with transaction.atomic():
+            # Update bid status
+            bid.status = 'accepted'
+            bid.save()
+            
+            # Update job
+            job = bid.job
+            job.cleaner = bid.cleaner
+            job.accepted_bid = bid
+            job.final_price = bid.bid_amount
+            job.status = 'bid_accepted'  # Changed from 'confirmed' to 'bid_accepted'
+            job.save()
+            
+            # Reject all other bids
+            JobBid.objects.filter(job=job).exclude(id=bid.id).update(status='rejected')
+        
+        return Response({
+            'message': 'Bid accepted successfully',
+            'job_id': job.id,
+            'cleaner': bid.cleaner.username,
+            'final_price': str(bid.bid_amount)
+        }, status=status.HTTP_200_OK)

@@ -13,6 +13,17 @@ class CustomUserManager(BaseUserManager):
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
+        
+        # Generate username from email if not provided
+        if 'username' not in extra_fields:
+            username_base = email.split('@')[0]
+            username = username_base
+            counter = 1
+            while self.model.objects.filter(username=username).exists():
+                username = f"{username_base}{counter}"
+                counter += 1
+            extra_fields['username'] = username
+        
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -44,6 +55,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     )
 
     id = models.AutoField(primary_key=True)
+    username = models.CharField(max_length=150, unique=True, db_index=True)
     email = models.EmailField(unique=True, db_index=True)
     password = models.CharField(max_length=128)  # Managed by AbstractBaseUser
 
@@ -51,6 +63,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
+    country_code = models.CharField(max_length=5, blank=True, null=True, help_text="Country code (e.g., +1, +30)")
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
 
     is_active = models.BooleanField(default=True)
@@ -63,6 +76,22 @@ class User(AbstractBaseUser, PermissionsMixin):
     preferences = models.JSONField(blank=True, null=True)
     oauth_provider = models.CharField(max_length=50, blank=True, null=True)
     verification_token = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Stripe integration fields
+    stripe_customer_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Stripe Customer ID for clients (payment processing)"
+    )
+    stripe_account_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text="Stripe Connect Account ID for cleaners (receiving payouts)"
+    )
     
     # Future field placeholder
     # subscription_tier = models.CharField(max_length=50, blank=True, null=True)
@@ -92,9 +121,91 @@ class User(AbstractBaseUser, PermissionsMixin):
     class Meta:
         indexes = [
             models.Index(fields=['email']),
+            models.Index(fields=['username']),
             models.Index(fields=['role']),
         ]
 
     def __str__(self):
         return self.email
+
+
+class ServiceArea(models.Model):
+    """
+    Service area model for cleaners to define their working locations.
+    Supports both city-based and radius-based service areas.
+    """
+    AREA_TYPE_CHOICES = [
+        ('city', 'City/Town'),
+        ('radius', 'Radius from location'),
+        ('postal_codes', 'Postal codes'),
+    ]
+
+    cleaner = models.ForeignKey(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='service_areas',
+        limit_choices_to={'role': 'cleaner'}
+    )
+    
+    # Area type and name
+    area_type = models.CharField(max_length=20, choices=AREA_TYPE_CHOICES, default='city')
+    area_name = models.CharField(max_length=255, help_text="Name of the service area (e.g., 'Manhattan', 'Brooklyn')")
+    
+    # Geographic boundaries
+    city = models.CharField(max_length=100, blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, default='US')
+    
+    # For radius-based areas
+    center_latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    center_longitude = models.DecimalField(max_digits=12, decimal_places=8, null=True, blank=True)
+    radius_miles = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, help_text="Service radius in miles (decimal allowed for km conversion)")
+    
+    # For postal code-based areas
+    postal_codes = models.JSONField(default=list, blank=True, help_text="List of postal codes served")
+    
+    # Priority and status
+    is_active = models.BooleanField(default=True)
+    priority = models.PositiveIntegerField(default=1, help_text="Priority order (1 = highest)")
+    
+    # Travel preferences
+    max_travel_time_minutes = models.PositiveIntegerField(default=30, help_text="Maximum travel time to job site")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['cleaner', 'area_name']
+        ordering = ['cleaner', 'priority', 'area_name']
+
+    def __str__(self):
+        return f"{self.cleaner.username} - {self.area_name}"
+
+    def is_location_in_area(self, latitude, longitude):
+        """
+        Check if a given location is within this service area.
+        """
+        if self.area_type == 'radius' and all([
+            self.center_latitude, self.center_longitude, self.radius_miles
+        ]):
+            # Calculate distance using Haversine formula
+            from math import radians, cos, sin, asin, sqrt
+            
+            # Convert to radians
+            lat1, lon1 = radians(float(latitude)), radians(float(longitude))
+            lat2, lon2 = radians(float(self.center_latitude)), radians(float(self.center_longitude))
+            
+            # Haversine formula
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * asin(sqrt(a))
+            r = 3956  # Radius of earth in miles
+            distance = c * r
+            
+            return distance <= self.radius_miles
+        
+        # For other area types, return True for now
+        # (can be enhanced with more complex geographic checks)
+        return True
 

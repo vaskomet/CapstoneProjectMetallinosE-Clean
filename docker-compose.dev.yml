@@ -1,0 +1,152 @@
+# Docker Compose for E-Clean Platform Development
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: ecloud_db_dev
+    environment:
+      POSTGRES_DB: ecloud_dev
+      POSTGRES_USER: ecloud_user
+      POSTGRES_PASSWORD: ecloud_dev_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecloud_user -d ecloud_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ecloud_network
+
+  # Redis for caching and channels
+  redis:
+    image: redis:7-alpine
+    container_name: ecloud_redis_dev
+    command: redis-server --appendonly yes --requirepass redis_dev_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - ecloud_network
+
+  # Django Backend
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecloud_backend_dev
+    env_file:
+      - .env.dev.local
+    environment:
+      - DEBUG=1
+      - POSTGRES_DB=ecloud_dev
+      - POSTGRES_USER=ecloud_user
+      - POSTGRES_PASSWORD=ecloud_dev_password
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://:redis_dev_password@redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_dev_password
+      - REDIS_DB=0
+      - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
+    volumes:
+      - ./backend:/app
+      - media_files:/app/media
+      - static_files:/app/staticfiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        python manage.py collectstatic --noinput &&
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ecloud_network
+
+  # Event Subscriber Service
+  event-subscriber:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecloud_event_subscriber_dev
+    environment:
+      - DEBUG=1
+      - POSTGRES_DB=ecloud_dev
+      - POSTGRES_USER=ecloud_user
+      - POSTGRES_PASSWORD=ecloud_dev_password
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_URL=redis://:redis_dev_password@redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_dev_password
+      - REDIS_DB=0
+      - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command: python manage.py run_event_subscriber --verbosity 2
+    restart: unless-stopped
+    networks:
+      - ecloud_network
+
+  # React Frontend (Development with Hot Reload)
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: ecloud_frontend_dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:5173"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000/api
+      - REACT_APP_WS_URL=ws://localhost:8000/ws
+      - VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51SEPusQ1SldwUSm9xBiqeuuEQflwqRTRCQBKoy7DCx33HWb7LkOD5c5I9ZAWsgj4uzuitPow9CNyoDmgPiSaa0bS00xFrugm8q
+      - VITE_API_BASE_URL=http://localhost:8000/api
+    networks:
+      - ecloud_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_files:
+  static_files:
+
+networks:
+  ecloud_network:
+    driver: bridge

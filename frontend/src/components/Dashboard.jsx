@@ -1,9 +1,23 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useUser } from '../contexts/UserContext';
+import OnboardingCard from './common/OnboardingCard';
 
 export default function Dashboard() {
   const { user } = useUser();
+
+  const getWelcomeMessage = (role) => {
+    switch(role) {
+      case 'client':
+        return 'Ready to book your next cleaning service? Let\'s get your space sparkling clean!';
+      case 'cleaner':
+        return 'Find new cleaning opportunities and manage your current assignments.';
+      case 'admin':
+        return 'Monitor platform activity and manage users efficiently.';
+      default:
+        return 'Welcome to E-Clean - your sustainable cleaning platform.';
+    }
+  };
 
   const getRoleColor = (role) => {
     switch(role) {
@@ -11,15 +25,6 @@ export default function Dashboard() {
       case 'cleaner': return 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg';
       case 'admin': return 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg';
       default: return 'bg-gradient-to-r from-gray-500 to-gray-600 text-white shadow-lg';
-    }
-  };
-
-  const getWelcomeMessage = (role) => {
-    switch(role) {
-      case 'client': return 'Find and book professional cleaning services for your property.';
-      case 'cleaner': return 'Manage your cleaning services and connect with clients.';
-      case 'admin': return 'Oversee the platform and manage all users and services.';
-      default: return 'Welcome to the E-Clean platform.';
     }
   };
 
@@ -50,8 +55,9 @@ export default function Dashboard() {
           )
         },
         {
-          title: 'Cleaning Jobs',
-          description: 'Book and track your cleaning appointments.',
+          title: 'Post Cleaning Jobs',
+          description: 'Post jobs with your budget and review cleaner bids.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -63,8 +69,9 @@ export default function Dashboard() {
     } else if (role === 'cleaner') {
       return [
         {
-          title: 'Available Jobs',
-          description: 'View and accept cleaning job requests.',
+          title: 'Browse Jobs & Bid',
+          description: 'View available jobs and submit competitive bids.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6m0 0a2 2 0 002 2h2m-2-2a2 2 0 00-2-2m2 2v12a2 2 0 002 2h-2a2 2 0 01-2-2V8z" />
@@ -72,8 +79,9 @@ export default function Dashboard() {
           )
         },
         {
-          title: 'My Jobs',
-          description: 'Manage your assigned cleaning jobs.',
+          title: 'My Bids & Jobs',
+          description: 'Track your bids and manage accepted jobs.',
+          link: '/jobs',
           icon: (
             <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -131,6 +139,9 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Onboarding Section */}
+        <OnboardingCard user={user} />
 
         {/* Feature Cards */}
         <div className="space-y-6">
