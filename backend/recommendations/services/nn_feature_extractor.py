@@ -12,11 +12,14 @@ import numpy as np
 from datetime import datetime, timedelta
 from django.db.models import Avg, Count, Q, F
 from django.core.cache import cache
+import logging
 
 from cleaning_jobs.models import CleaningJob, JobBid
 from reviews.models import Review, ReviewRating
 from properties.models import Property
 from users.models import User
+
+logger = logging.getLogger(__name__)
 
 
 class NNFeatureExtractor:
@@ -44,6 +47,22 @@ class NNFeatureExtractor:
         """
         self.use_cache = use_cache
         self.cache_ttl = cache_ttl
+        self.embedding_model = None
+        self._load_embedding_model()
+    
+    def _load_embedding_model(self):
+        """Load sentence transformer model for text embeddings"""
+        try:
+            from sentence_transformers import SentenceTransformer
+            logger.info("Loading sentence-transformers model (all-MiniLM-L6-v2)...")
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("✓ Embedding model loaded successfully")
+        except ImportError:
+            logger.warning("sentence-transformers not installed. Text embeddings will use zeros.")
+            self.embedding_model = None
+        except Exception as e:
+            logger.error(f"Failed to load embedding model: {e}")
+            self.embedding_model = None
     
     def extract_for_job_cleaner_pair(
         self,
@@ -74,8 +93,8 @@ class NNFeatureExtractor:
         features.update(self._extract_contextual_features(job, reference_date))
         features.update(self._extract_rating_features(cleaner, reference_date))
         
-        # Get text embeddings (use zeros if not available)
-        embeddings = self._get_text_embeddings(cleaner, reference_date)
+        # Get text embeddings from job description
+        embeddings = self._get_text_embeddings(job)
         
         # Combine all features in correct order
         feature_list = [
@@ -465,20 +484,56 @@ class NNFeatureExtractor:
     # TEXT EMBEDDINGS (384)
     # =========================================================================
     
-    def _get_text_embeddings(self, cleaner: User, reference_date: datetime) -> List[float]:
+    def _get_text_embeddings(self, job: CleaningJob) -> List[float]:
         """
-        Get 384-dimensional text embeddings for cleaner's reviews.
+        Get 384-dimensional text embeddings for job description.
         
-        For production, this would either:
-        1. Use cached embeddings from a background job
-        2. Compute on-the-fly using sentence-transformers
-        3. Return zeros as fallback
+        Combines property description and job special instructions,
+        then generates embeddings using sentence-transformers.
         
-        Returns zeros for now (model can still work without them).
+        Uses caching to avoid recomputing embeddings for same text.
+        Falls back to zeros if model not available or text is empty.
+        
+        Args:
+            job: CleaningJob instance
+            
+        Returns:
+            List of 384 float values
         """
-        # TODO: Implement embedding generation or retrieval
-        # For now, return zeros (384 dimensions)
-        return [0.0] * 384
+        # Build text from property description and job instructions
+        property_desc = job.property.description if job.property.description else ""
+        job_instructions = job.special_instructions if job.special_instructions else ""
+        text = f"{property_desc} {job_instructions}".strip()
+        
+        # Return zeros if no text or model unavailable
+        if not text or self.embedding_model is None:
+            return [0.0] * 384
+        
+        # Check cache first
+        if self.use_cache:
+            cache_key = f"text_embedding:{hash(text)}"
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
+        
+        # Generate embedding
+        try:
+            embedding = self.embedding_model.encode(
+                text,
+                show_progress_bar=False,
+                convert_to_numpy=True
+            )
+            embedding_list = embedding.astype(np.float32).tolist()
+            
+            # Cache result
+            if self.use_cache:
+                cache.set(cache_key, embedding_list, self.cache_ttl)
+            
+            return embedding_list
+            
+        except Exception as e:
+            logger.error(f"Failed to generate embedding: {e}")
+            return [0.0] * 384
 
 
 # Singleton instance
