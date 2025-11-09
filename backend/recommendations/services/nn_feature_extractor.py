@@ -488,7 +488,7 @@ class NNFeatureExtractor:
         """
         Get 384-dimensional text embeddings for job description.
         
-        Combines property description and job special instructions,
+        Combines property address and job services description,
         then generates embeddings using sentence-transformers.
         
         Uses caching to avoid recomputing embeddings for same text.
@@ -500,10 +500,10 @@ class NNFeatureExtractor:
         Returns:
             List of 384 float values
         """
-        # Build text from property description and job instructions
-        property_desc = job.property.description if job.property.description else ""
-        job_instructions = job.special_instructions if job.special_instructions else ""
-        text = f"{property_desc} {job_instructions}".strip()
+        # Build text from property address and job services description
+        property_address = f"{job.property.address_line1}, {job.property.city}" if job.property else ""
+        job_description = job.services_description if job.services_description else ""
+        text = f"{property_address} {job_description}".strip()
         
         # Return zeros if no text or model unavailable
         if not text or self.embedding_model is None:
