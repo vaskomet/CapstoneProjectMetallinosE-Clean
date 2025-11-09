@@ -73,6 +73,8 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useUser } from '../../contexts/UserContext';
+import TwoFactorLogin from '../TwoFactorLogin';
+import { toast } from 'react-toastify';
 
 // Validate email/password (e.g., regex for format) before submission
 // Use camelCase for props per DEVELOPMENT_STANDARDS.md
@@ -83,9 +85,11 @@ export default function LoginForm() {
     password: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
 
   // Authentication context and navigation
-  const { login, error } = useUser();
+  const { login, error, setUser } = useUser();
   const navigate = useNavigate();
 
   /**
@@ -109,13 +113,51 @@ export default function LoginForm() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const result = await login(formData);
-
-    if (result.success) {
-      navigate('/dashboard');
+    try {
+      const result = await login(formData);
+      
+      if (!result.success) {
+        // Error already handled by UserContext
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Check if 2FA is required
+      if (result.requires2FA) {
+        setRequires2FA(true);
+        setUserEmail(result.email);
+        toast.info('Please enter your 2FA code');
+        setIsSubmitting(false);
+      } else {
+        // Regular login success - user is already set in UserContext
+        toast.success(`Welcome back!`);
+        navigate('/dashboard');
+      }
+    } catch (error) {
+      toast.error('An unexpected error occurred');
+      setIsSubmitting(false);
     }
+  };
 
-    setIsSubmitting(false);
+  /**
+   * Handle successful 2FA verification
+   */
+  const handle2FASuccess = (response) => {
+    console.log('2FA Success - Response:', response);
+    console.log('User data:', response.user);
+    setUser(response.user);
+    toast.success(`Welcome back, ${response.user.first_name}!`);
+    console.log('Navigating to dashboard...');
+    navigate('/dashboard');
+  };
+
+  /**
+   * Cancel 2FA and return to login
+   */
+  const handle2FACancel = () => {
+    setRequires2FA(false);
+    setUserEmail('');
+    setFormData({ email: '', password: '' });
   };
 
   /**
@@ -128,6 +170,19 @@ export default function LoginForm() {
     // Use custom endpoint that immediately redirects to Google
     window.location.href = `${baseUrl}/auth/google/`;
   };
+
+  // Show 2FA verification if required
+  if (requires2FA) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-100 py-16 px-4 sm:px-6 lg:px-8">
+        <TwoFactorLogin
+          email={userEmail}
+          onSuccess={handle2FASuccess}
+          onCancel={handle2FACancel}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-100 via-purple-50 to-indigo-100 py-16 px-4 sm:px-6 lg:px-8">

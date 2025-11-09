@@ -47,6 +47,13 @@ export const authAPI = {
     return apiCall(
       async () => {
         const response = await api.post('/auth/login/', credentials);
+        
+        // Check if 2FA is required (different response structure)
+        if (response.data.requires_2fa) {
+          return response.data;
+        }
+        
+        // Regular login (with tokens)
         const { access, refresh, user } = response.data;
         console.log('🔐 Login response tokens:', { 
           hasAccess: !!access, 
@@ -184,7 +191,7 @@ export const authAPI = {
   },
 
   /**
-   * Resend email verification email
+   * Resend email verification
    * @async
    * @function resendVerification
    * @returns {Promise<Object>} Resend response
@@ -199,6 +206,87 @@ export const authAPI = {
         loadingKey: 'auth_resend_verification',
         successMessage: 'Verification email sent! Check your inbox.',
         showSuccess: true
+      }
+    );
+  },
+
+  /**
+   * Enable two-factor authentication
+   * @async
+   * @function enable2FA
+   * @returns {Promise<Object>} 2FA setup data with QR code and backup codes
+   */
+  enable2FA: async () => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/2fa/enable/');
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_enable_2fa'
+      }
+    );
+  },
+
+  /**
+   * Verify 2FA setup with code from authenticator app
+   * @async
+   * @function verify2FASetup
+   * @param {string} code - 6-digit verification code
+   * @returns {Promise<Object>} Verification response
+   */
+  verify2FASetup: async (code) => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/2fa/verify-setup/', { code });
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_verify_2fa_setup'
+      }
+    );
+  },
+
+  /**
+   * Disable two-factor authentication
+   * @async
+   * @function disable2FA
+   * @param {string} password - User password for confirmation
+   * @returns {Promise<Object>} Disable response
+   */
+  disable2FA: async (password) => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/2fa/disable/', { password });
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_disable_2fa',
+        showSuccess: false  // Don't show toast here, let component handle it
+      }
+    );
+  },
+
+  /**
+   * Verify 2FA code during login
+   * @async
+   * @function verify2FALogin
+   * @param {string} email - User email
+   * @param {string} code - 6-digit verification code
+   * @returns {Promise<Object>} Login response with tokens
+   */
+  verify2FALogin: async (email, code) => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/2fa/verify-login/', { email, code });
+        const { access, refresh, user } = response.data;
+        localStorage.setItem('access_token', access);
+        localStorage.setItem('refresh_token', refresh);
+        localStorage.setItem('user', JSON.stringify(user));
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_verify_2fa_login'
       }
     );
   },

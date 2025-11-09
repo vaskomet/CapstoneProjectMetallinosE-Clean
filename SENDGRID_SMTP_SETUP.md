@@ -11,8 +11,13 @@ EMAIL_HOST = 'smtp.sendgrid.net'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'apikey'
-EMAIL_HOST_PASSWORD = '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'
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # Set in .env.dev.local
 DEFAULT_FROM_EMAIL = 'E-Clean <noreply@e-clean.com>'
+```
+
+**IMPORTANT**: The actual SendGrid API key should be stored in `.env.dev.local` (not tracked by git):
+```bash
+EMAIL_HOST_PASSWORD=SG.your_actual_sendgrid_api_key_here
 ```
 
 ### Status

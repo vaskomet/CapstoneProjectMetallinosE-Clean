@@ -27,6 +27,12 @@ urlpatterns = [
     path('verify-email/', views.verify_email_view, name='verify-email'),
     path('resend-verification/', views.resend_verification_email_view, name='resend-verification'),
 
+    # Two-Factor Authentication endpoints
+    path('2fa/enable/', views.enable_2fa_view, name='enable-2fa'),
+    path('2fa/verify-setup/', views.verify_2fa_setup_view, name='verify-2fa-setup'),
+    path('2fa/disable/', views.disable_2fa_view, name='disable-2fa'),
+    path('2fa/verify-login/', views.verify_2fa_login_view, name='verify-2fa-login'),
+
     # Service areas endpoints for cleaners
     path('service-areas/', views.ServiceAreaListCreateView.as_view(), name='service-areas'),
     path('service-areas/<int:pk>/', views.ServiceAreaDetailView.as_view(), name='service-area-detail'),

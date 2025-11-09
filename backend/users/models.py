@@ -98,6 +98,18 @@ class User(AbstractBaseUser, PermissionsMixin):
         help_text="Expiration time for verification token (30 minutes after generation)"
     )
     
+    # Two-Factor Authentication fields
+    two_factor_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether user has enabled two-factor authentication"
+    )
+    two_factor_secret = models.CharField(
+        max_length=32,
+        blank=True,
+        null=True,
+        help_text="TOTP secret key for 2FA (base32 encoded)"
+    )
+    
     # Verified cleaner badge (admin-approved)
     is_verified_cleaner = models.BooleanField(
         default=False,

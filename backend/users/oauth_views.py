@@ -5,6 +5,7 @@ from django.shortcuts import render, redirect
 from django.views import View
 from django.middleware.csrf import get_token
 from django.http import HttpResponse
+from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from urllib.parse import urlencode
 
@@ -83,31 +84,45 @@ class OAuthCallbackView(View):
     """
     def get(self, request):
         """
-        After successful OAuth, generate JWT tokens and redirect to frontend
+        After successful OAuth, check for 2FA and redirect accordingly
         """
+        # Get frontend URL from settings (default to localhost for dev)
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        
         # Check if user is authenticated
         if not request.user.is_authenticated:
             # Redirect back to register page with error
-            frontend_url = 'http://localhost:3000'  # Your React app URL
             return redirect(f'{frontend_url}/register?error=oauth_failed')
         
-        # Generate JWT tokens for the authenticated user
-        refresh = RefreshToken.for_user(request.user)
+        user = request.user
+        
+        # Check if user has 2FA enabled
+        if user.two_factor_enabled:
+            # Redirect to frontend 2FA verification page
+            params = {
+                'requires_2fa': 'true',
+                'email': user.email,
+                'provider': 'google'
+            }
+            redirect_url = f'{frontend_url}/auth/2fa-verify?{urlencode(params)}'
+            return redirect(redirect_url)
+        
+        # No 2FA - Generate JWT tokens and proceed with normal login
+        refresh = RefreshToken.for_user(user)
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
         
         # Get user data
         user_data = {
-            'id': request.user.id,
-            'email': request.user.email,
-            'username': request.user.username,
-            'first_name': request.user.first_name,
-            'last_name': request.user.last_name,
-            'role': request.user.role,
+            'id': user.id,
+            'email': user.email,
+            'username': user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'role': user.role,
         }
         
         # Build redirect URL with tokens as URL parameters
-        frontend_url = 'http://localhost:3000'  # Your React app URL
         params = {
             'access': access_token,
             'refresh': refresh_token,

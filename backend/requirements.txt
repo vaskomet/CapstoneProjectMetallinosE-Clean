@@ -11,6 +11,10 @@ python-dotenv==1.0.*
 # Authentication and Social Login
 django-allauth==65.3.0
 
+# Two-Factor Authentication
+pyotp==2.9.*
+qrcode[pil]==7.4.*
+
 # Database drivers
 psycopg2-binary==2.9.*
 

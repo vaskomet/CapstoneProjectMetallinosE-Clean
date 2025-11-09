@@ -13,6 +13,7 @@ import DirectMessages from './components/chat/DirectMessages';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import OAuthCallback from './pages/OAuthCallback';
+import OAuth2FAVerify from './pages/OAuth2FAVerify';
 import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './components/Dashboard';
 import PropertiesDashboard from './components/PropertiesDashboard';
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/login" element={<LoginForm />} />
                   <Route path="/register" element={<RegisterForm />} />
                   <Route path="/auth/callback" element={<OAuthCallback />} />
+                  <Route path="/auth/2fa-verify" element={<OAuth2FAVerify />} />
                   <Route path="/verify-email/:token" element={<VerifyEmail />} />
                   <Route 
                     path="/dashboard" 

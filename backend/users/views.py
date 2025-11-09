@@ -12,6 +12,13 @@ from .models import ServiceArea
 from .location_utils import find_cleaners_by_location, find_cleaners_by_city, find_cleaners_by_postal_code
 from .email_verification import send_verification_email
 from .throttles import ResendVerificationThrottle
+from .two_factor_auth import (
+    generate_totp_secret,
+    get_totp_uri,
+    generate_qr_code,
+    verify_totp_code,
+    generate_backup_codes
+)
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
@@ -60,6 +67,15 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Check if user account is active
         if not user.is_active:
             raise serializers.ValidationError('Your account has been disabled. Please contact support.')
+        
+        # Check if user has 2FA enabled
+        if user.two_factor_enabled:
+            # Don't generate tokens yet - user needs to verify 2FA code
+            return {
+                'requires_2fa': True,
+                'email': user.email,
+                'message': 'Please enter your 2FA code'
+            }
         
         # All checks passed, generate tokens
         refresh = self.get_token(user)
@@ -370,4 +386,182 @@ def resend_verification_email_view(request):
         return Response(
             {'error': 'Failed to send verification email. Please try again later.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ============================================================================
+# Two-Factor Authentication Views
+# ============================================================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def enable_2fa_view(request):
+    """
+    Enable 2FA for the authenticated user.
+    Generates a TOTP secret and returns QR code + backup codes.
+    """
+    user = request.user
+    
+    # Check if 2FA is already enabled
+    if user.two_factor_enabled:
+        return Response(
+            {'error': '2FA is already enabled for your account'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Generate new secret
+    secret = generate_totp_secret()
+    
+    # Save secret to user (but don't enable yet - wait for verification)
+    user.two_factor_secret = secret
+    user.save()
+    
+    # Generate QR code
+    uri = get_totp_uri(user, secret)
+    qr_code = generate_qr_code(uri)
+    
+    # Generate backup codes
+    backup_codes = generate_backup_codes(10)
+    
+    return Response({
+        'message': 'Scan the QR code with your authenticator app',
+        'qr_code': qr_code,
+        'secret': secret,  # Also provide manual entry option
+        'backup_codes': backup_codes
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verify_2fa_setup_view(request):
+    """
+    Verify 2FA setup by confirming a code from the authenticator app.
+    Only after successful verification, 2FA is enabled.
+    """
+    user = request.user
+    code = request.data.get('code')
+    
+    if not code:
+        return Response(
+            {'error': 'Verification code is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if user.two_factor_enabled:
+        return Response(
+            {'error': '2FA is already enabled'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not user.two_factor_secret:
+        return Response(
+            {'error': 'No 2FA setup in progress. Please start by enabling 2FA first.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify the code
+    if verify_totp_code(user.two_factor_secret, code):
+        # Code is correct, enable 2FA
+        user.two_factor_enabled = True
+        user.save()
+        
+        return Response({
+            'message': '2FA enabled successfully! Your account is now more secure.',
+            'two_factor_enabled': True
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response(
+            {'error': 'Invalid verification code. Please try again.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def disable_2fa_view(request):
+    """
+    Disable 2FA for the authenticated user.
+    Requires password confirmation for security.
+    """
+    user = request.user
+    password = request.data.get('password')
+    
+    if not password:
+        return Response(
+            {'error': 'Password is required to disable 2FA'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify password
+    if not user.check_password(password):
+        return Response(
+            {'error': 'Incorrect password'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if not user.two_factor_enabled:
+        return Response(
+            {'error': '2FA is not enabled on your account'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Disable 2FA
+    user.two_factor_enabled = False
+    user.two_factor_secret = None
+    user.save()
+    
+    return Response({
+        'message': '2FA has been disabled',
+        'two_factor_enabled': False
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_2fa_login_view(request):
+    """
+    Verify 2FA code during login.
+    Called after email/password verification when user has 2FA enabled.
+    """
+    email = request.data.get('email')
+    code = request.data.get('code')
+    
+    if not email or not code:
+        return Response(
+            {'error': 'Email and verification code are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'Invalid credentials'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+    
+    if not user.two_factor_enabled:
+        return Response(
+            {'error': '2FA is not enabled for this account'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify the code
+    if verify_totp_code(user.two_factor_secret, code):
+        # Code is correct, generate tokens
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data,
+            'message': '2FA verification successful'
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response(
+            {'error': 'Invalid verification code'},
+            status=status.HTTP_401_UNAUTHORIZED
         )

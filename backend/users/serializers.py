@@ -19,6 +19,8 @@ class UserSerializer(serializers.ModelSerializer):
     is_oauth_user = serializers.SerializerMethodField()
     # Add service areas count for cleaners
     service_areas_count = serializers.SerializerMethodField()
+    # Add 2FA status
+    two_factor_enabled = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
@@ -40,6 +42,7 @@ class UserSerializer(serializers.ModelSerializer):
             'is_verified_cleaner',  # Admin-verified cleaner badge
             'verified_at',  # When cleaner was verified
             'service_areas_count',  # Count of service areas (for cleaners)
+            'two_factor_enabled',  # Whether 2FA is enabled
         ]
         read_only_fields = [
             'email',

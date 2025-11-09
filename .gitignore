@@ -52,6 +52,7 @@ frontend/dist/
 frontend/build/
 
 # Environment files
+.env.dev
 .env.prod
 .env.local
 .env.development.local

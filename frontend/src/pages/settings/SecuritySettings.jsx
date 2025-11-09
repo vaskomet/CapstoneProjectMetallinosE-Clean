@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useUser } from '../../contexts/UserContext';
 import { authAPI } from '../../services/api';
+import TwoFactorSetup from '../../components/TwoFactorSetup';
+import { toast } from 'react-toastify';
 
 /**
  * Security Settings Page
  * Password changes and authentication management
  */
 export default function SecuritySettings() {
-  const { user } = useUser();
+  const { user, refreshUser } = useUser();
   const [passwordData, setPasswordData] = useState({
     current_password: '',
     new_password: '',
@@ -17,6 +19,9 @@ export default function SecuritySettings() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [disabling2FA, setDisabling2FA] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
 
   const handleChange = (e) => {
     setPasswordData({
@@ -59,6 +64,58 @@ export default function SecuritySettings() {
 
     setIsChanging(false);
   };
+
+  const handle2FAComplete = async () => {
+    setShow2FASetup(false);
+    await refreshUser();
+    toast.success('2FA enabled successfully!');
+  };
+
+  const handleDisable2FA = async (e) => {
+    e.preventDefault();
+    if (!disablePassword) {
+      toast.error('Please enter your password');
+      return;
+    }
+
+    setDisabling2FA(true);
+    try {
+      await authAPI.disable2FA(disablePassword);
+      // Refresh user data to get updated two_factor_enabled status
+      const result = await refreshUser();
+      if (result.success) {
+        toast.success('2FA has been disabled successfully');
+        setDisablePassword('');
+        setMessage('');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to disable 2FA');
+    } finally {
+      setDisabling2FA(false);
+    }
+  };
+
+  if (show2FASetup) {
+    return (
+      <div>
+        <div className="mb-4">
+          <button
+            onClick={() => setShow2FASetup(false)}
+            className="text-blue-600 hover:text-blue-700 flex items-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Security Settings
+          </button>
+        </div>
+        <TwoFactorSetup
+          onComplete={handle2FAComplete}
+          onCancel={() => setShow2FASetup(false)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -219,21 +276,95 @@ export default function SecuritySettings() {
         )}
       </div>
 
-      {/* Future: Two-Factor Authentication */}
-      <div className="border border-gray-200 rounded-lg p-6 opacity-60">
-        <div className="flex items-start justify-between">
+      {/* Two-Factor Authentication Section */}
+      <div className="border border-gray-200 rounded-lg p-6">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-semibold text-gray-900">Two-Factor Authentication</h3>
-              <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
-                Coming Soon
-              </span>
-            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Two-Factor Authentication</h3>
             <p className="mt-1 text-sm text-gray-600">
               Add an extra layer of security to your account
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            {user?.two_factor_enabled ? (
+              <span className="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full flex items-center gap-1">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Enabled
+              </span>
+            ) : (
+              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-full">
+                Not Enabled
+              </span>
+            )}
+          </div>
         </div>
+
+        {user?.two_factor_enabled ? (
+          <div>
+            <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-green-700">
+                    Your account is protected with two-factor authentication. You'll need to enter a code from your authenticator app every time you log in.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleDisable2FA} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Enter your password to disable 2FA
+                </label>
+                <input
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter your password"
+                  disabled={disabling2FA}
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all disabled:bg-gray-400"
+                disabled={disabling2FA || !disablePassword}
+              >
+                {disabling2FA ? 'Disabling...' : 'Disable 2FA'}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div>
+            <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700">
+                    Enable 2FA to add an extra layer of security. You'll need an authenticator app like Google Authenticator or Authy.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShow2FASetup(true)}
+              className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+            >
+              Enable Two-Factor Authentication
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

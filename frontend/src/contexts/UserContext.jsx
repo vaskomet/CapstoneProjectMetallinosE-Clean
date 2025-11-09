@@ -190,7 +190,15 @@ export function UserProvider({ children }) {
       console.log('Login attempt with credentials:', credentials);
       
       const response = await authAPI.login(credentials);
-      // authAPI.login already handles localStorage, just get user data
+      
+      // Check if 2FA is required
+      if (response.requires_2fa) {
+        console.log('2FA required for user:', response.email);
+        dispatch({ type: 'SET_LOADING', payload: false });
+        return { success: true, requires2FA: true, email: response.email };
+      }
+      
+      // Regular login (no 2FA) - authAPI.login already handles localStorage, just get user data
       const { user } = response;
 
       console.log('Login successful:', { user: user.email, role: user.role });
@@ -265,6 +273,17 @@ export function UserProvider({ children }) {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const userData = await authAPI.getProfile();
+      dispatch({ type: 'SET_USER', payload: userData });
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+      return { success: false };
+    }
+  };
+
   const value = {
     ...state,
     login,
@@ -272,6 +291,10 @@ export function UserProvider({ children }) {
     logout,
     updateProfile,
     changePassword,
+    refreshUser,
+    setUser: (userData) => {
+      dispatch({ type: 'SET_USER', payload: userData });
+    },
   };
 
   return (
