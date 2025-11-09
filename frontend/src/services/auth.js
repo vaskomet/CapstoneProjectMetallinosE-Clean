@@ -156,6 +156,54 @@ export const authAPI = {
   },
 
   /**
+   * Verify user email with token from verification email
+   * @async
+   * @function verifyEmail
+   * @param {string} token - Email verification token
+   * @returns {Promise<Object>} Verification response
+   */
+  verifyEmail: async (token) => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/verify-email/', { token });
+        // Update user in localStorage if logged in
+        const currentUser = localStorage.getItem('user');
+        if (currentUser) {
+          const user = JSON.parse(currentUser);
+          user.email_verified = true;
+          user.email_verified_at = new Date().toISOString();
+          localStorage.setItem('user', JSON.stringify(user));
+        }
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_verify_email',
+        showSuccess: false // Page handles success message
+      }
+    );
+  },
+
+  /**
+   * Resend email verification email
+   * @async
+   * @function resendVerification
+   * @returns {Promise<Object>} Resend response
+   */
+  resendVerification: async () => {
+    return apiCall(
+      async () => {
+        const response = await api.post('/auth/resend-verification/');
+        return response.data;
+      },
+      {
+        loadingKey: 'auth_resend_verification',
+        successMessage: 'Verification email sent! Check your inbox.',
+        showSuccess: true
+      }
+    );
+  },
+
+  /**
    * Logout current user by clearing stored authentication data
    * @function logout
    */

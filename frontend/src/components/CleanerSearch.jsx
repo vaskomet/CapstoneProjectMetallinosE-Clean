@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 import { cleanerSearchAPI, recommendationsAPI, propertiesAPI } from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { useUser } from '../contexts/UserContext';
+import VerifiedBadge from './VerifiedBadge';
 
 const CleanerSearch = ({ 
   onSelectCleaners, 
@@ -580,6 +581,11 @@ const CleanerSearch = ({
                               <h4 className="text-lg font-semibold text-gray-900">
                                 {cleaner.first_name} {cleaner.last_name}
                               </h4>
+
+                              {/* Verified Cleaner Badge */}
+                              {cleaner.is_verified_cleaner && (
+                                <VerifiedBadge size="sm" showText={true} />
+                              )}
                               
                               {/* ML Recommendation Badge */}
                               {isTopRecommendation && mlScore && (

@@ -9,6 +9,8 @@ import { cleaningJobsAPI, propertiesAPI, jobBidsAPI } from '../services/api';
 import LocationFilter from './LocationFilter';
 import JobWorkflowModal from './JobWorkflowModal';
 import PaymentModal from './payments/PaymentModal';
+import EmailVerificationBanner from './EmailVerificationBanner';
+import ServiceAreaBanner from './ServiceAreaBanner';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -513,7 +515,15 @@ const CleaningJobsPool = () => {
         setSelectedJob(updatedJob);
       }
     } catch (err) {
-      const errorMessage = err.response?.data?.detail || 'Failed to submit bid';
+      // Check if error is about email verification
+      if (err.response?.status === 403 && err.response?.data?.error === 'Email verification required') {
+        toast.error('Please verify your email address before bidding on jobs');
+        setShowBidModal(false);
+        navigate('/settings/profile');
+        return;
+      }
+      
+      const errorMessage = err.response?.data?.message || err.response?.data?.detail || 'Failed to submit bid';
       toast.error('Error: ' + errorMessage);
       console.error('Submit bid error:', err);
     }
@@ -743,29 +753,54 @@ const CleaningJobsPool = () => {
                 <>
                   <button
                     onClick={() => {
+                      // Check email verification first
+                      if (!user.email_verified && !user.is_oauth_user) {
+                        toast.error('Please verify your email address before posting jobs. Check your inbox or visit your profile to resend verification.');
+                        navigate('/settings/profile');
+                        return;
+                      }
+                      
                       if (properties.length === 0) {
                         toast.warning('Please add a property first before booking a cleaning service');
                         return;
                       }
                       setShowCreateModal(true);
                     }}
+                    disabled={!user.email_verified && !user.is_oauth_user}
                     className={`px-4 py-2 rounded-lg transition-colors ${
-                      properties.length === 0
+                      (!user.email_verified && !user.is_oauth_user)
+                        ? 'bg-gray-400 text-gray-700 cursor-not-allowed opacity-60'
+                        : properties.length === 0
                         ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
                         : 'bg-blue-500 hover:bg-blue-600 text-white'
                     }`}
-                    title={properties.length === 0 ? 'Add a property first' : 'Book a cleaning service'}
+                    title={
+                      (!user.email_verified && !user.is_oauth_user) 
+                        ? 'Please verify your email address first' 
+                        : properties.length === 0 
+                        ? 'Add a property first' 
+                        : 'Book a cleaning service'
+                    }
                   >
                     Book Cleaning
                   </button>
-                  {properties.length === 0 && (
+                  
+                  {/* Show appropriate helper button */}
+                  {(!user.email_verified && !user.is_oauth_user) ? (
+                    <button
+                      onClick={() => navigate('/settings/profile')}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Verify Email
+                    </button>
+                  ) : properties.length === 0 ? (
                     <button
                       onClick={() => window.location.href = '/properties'}
                       className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors"
                     >
                       Add Property
                     </button>
-                  )}
+                  ) : null}
                 </>
               )}
               
@@ -782,6 +817,23 @@ const CleaningJobsPool = () => {
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Email Verification Banner for Cleaners */}
+        {user?.role === 'cleaner' && !user.email_verified && !user.is_oauth_user && (
+          <div className="mb-6">
+            <EmailVerificationBanner 
+              user={user}
+              message="Please verify your email to start bidding on jobs and earning money!"
+            />
+          </div>
+        )}
+
+        {/* Service Area Banner for Cleaners */}
+        {user?.role === 'cleaner' && (user.email_verified || user.is_oauth_user) && (
+          <div className="mb-6">
+            <ServiceAreaBanner user={user} />
+          </div>
+        )}
+
         {/* Location Filter - Geographic filtering for cleaners */}
         {user?.role === 'cleaner' && (
           <div className="mb-6">
@@ -1260,12 +1312,32 @@ const CleaningJobsPool = () => {
                     ) : (
                       <div>
                         <h3 className="font-medium text-gray-700 mb-2">Submit Your Bid</h3>
-                        <button
-                          onClick={() => setShowBidModal(true)}
-                          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded font-medium transition-colors"
-                        >
-                          Place Bid
-                        </button>
+                        
+                        {/* Check email verification before allowing bid */}
+                        {!user.email_verified && !user.is_oauth_user ? (
+                          <div className="space-y-2">
+                            <button
+                              disabled
+                              className="w-full bg-gray-400 text-white py-2 px-4 rounded font-medium cursor-not-allowed"
+                              title="Please verify your email address first"
+                            >
+                              Place Bid (Email Verification Required)
+                            </button>
+                            <button
+                              onClick={() => navigate('/settings/profile')}
+                              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded font-medium transition-colors text-sm"
+                            >
+                              Verify Email to Start Bidding
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowBidModal(true)}
+                            className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded font-medium transition-colors"
+                          >
+                            Place Bid
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

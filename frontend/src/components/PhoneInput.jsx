@@ -32,16 +32,17 @@ const PhoneInput = ({
   error,
   required = false,
   className = "",
-  disabled = false 
+  disabled = false,
+  label = "Phone Number"
 }) => {
-  const selectedCountry = COUNTRY_CODES.find(country => country.dial === countryCode) || COUNTRY_CODES[0];
+  const selectedCountry = COUNTRY_CODES.find(country => country.dial === countryCode) || COUNTRY_CODES[7]; // Default to Greece
 
   const formatPhoneNumber = (value) => {
     // Remove all non-digit characters
     const digits = value.replace(/\D/g, '');
     
-    // Limit based on total length including country code (14 characters max)
-    const maxPhoneLength = 14 - countryCode.length;
+    // Limit based on total length including country code (15 characters max)
+    const maxPhoneLength = 15 - countryCode.length;
     if (digits.length > maxPhoneLength) return phoneNumber;
     
     return digits;
@@ -53,19 +54,19 @@ const PhoneInput = ({
   };
 
   return (
-    <div className={`space-y-1 ${className}`}>
-      <label className="block text-sm font-medium text-gray-700">
-        Phone Number {required && <span className="text-red-500">*</span>}
+    <div className={className}>
+      <label className="block text-sm font-semibold text-gray-700 mb-2">
+        {label} {required && <span className="text-red-500">*</span>}
       </label>
-      <div className="flex rounded-md shadow-sm">
+      <div className="flex gap-2">
         {/* Country Code Selector */}
-        <div className="relative">
+        <div className="relative flex-shrink-0">
           <select
             value={countryCode}
             onChange={(e) => onCountryChange(e.target.value)}
             disabled={disabled}
-            className="h-10 pl-3 pr-8 border border-gray-300 bg-white rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm font-medium appearance-none cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
-            style={{ minWidth: '80px' }}
+            className="appearance-none h-[50px] pl-3 pr-10 border-2 border-gray-200 bg-white rounded-xl focus:outline-none focus:ring-4 focus:ring-green-500/20 focus:border-green-500 text-sm font-medium cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed transition-all duration-300 shadow-sm"
+            style={{ minWidth: '95px' }}
           >
             {COUNTRY_CODES.map((country) => (
               <option key={country.code} value={country.dial}>
@@ -73,7 +74,7 @@ const PhoneInput = ({
               </option>
             ))}
           </select>
-          <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -85,27 +86,31 @@ const PhoneInput = ({
           type="tel"
           value={phoneNumber}
           onChange={handlePhoneChange}
-          placeholder="Enter phone number"
+          placeholder="6912345678"
           disabled={disabled}
-          className="flex-1 min-w-0 block w-full px-3 py-2 border border-l-0 border-gray-300 rounded-r-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
+          className={`flex-1 px-4 py-3 border-2 ${
+            error 
+              ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500' 
+              : 'border-gray-200 focus:ring-green-500/20 focus:border-green-500'
+          } rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-4 transition-all duration-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-sm`}
           maxLength="15"
         />
       </div>
       
-      {/* Country Name Display */}
-      <div className="text-xs text-gray-500 pl-1">
+      {/* Country Name Display - Subtle helper text */}
+      <div className="text-xs text-gray-500 mt-2 pl-1">
         {selectedCountry.flag} {selectedCountry.name}
       </div>
       
       {/* Error Message */}
       {error && (
-        <p className="text-sm text-red-600 mt-1">{error}</p>
+        <p className="text-xs text-red-600 font-medium flex items-center gap-1 mt-2">
+          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          {error}
+        </p>
       )}
-      
-      {/* Help Text */}
-      <p className="text-xs text-gray-500 mt-1">
-        Enter your phone number without the country code
-      </p>
     </div>
   );
 };

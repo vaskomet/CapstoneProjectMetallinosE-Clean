@@ -23,6 +23,10 @@ urlpatterns = [
     # POST: Changes user password with current password validation
     path('change-password/', views.PasswordChangeView.as_view(), name='change-password'),
 
+    # Email verification endpoints
+    path('verify-email/', views.verify_email_view, name='verify-email'),
+    path('resend-verification/', views.resend_verification_email_view, name='resend-verification'),
+
     # Service areas endpoints for cleaners
     path('service-areas/', views.ServiceAreaListCreateView.as_view(), name='service-areas'),
     path('service-areas/<int:pk>/', views.ServiceAreaDetailView.as_view(), name='service-area-detail'),

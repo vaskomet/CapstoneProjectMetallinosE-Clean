@@ -127,8 +127,8 @@ export default function Navigation() {
                   )}
                 </button>
                 
-                <Link to="/profile" className="text-gray-700 hover:text-purple-600 px-3 py-2 rounded-lg text-sm font-semibold transition-all">
-                  Profile
+                <Link to="/settings" className="text-gray-700 hover:text-purple-600 px-3 py-2 rounded-lg text-sm font-semibold transition-all">
+                  Settings
                 </Link>
                 
                 <button onClick={handleLogout} className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg">
@@ -227,8 +227,8 @@ export default function Navigation() {
                   </Link>
                 )}
                 
-                <Link to="/profile" className="block px-3 py-2 rounded-lg text-base font-medium text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-all" onClick={closeMobileMenu}>
-                  👤 Profile
+                <Link to="/settings" className="block px-3 py-2 rounded-lg text-base font-medium text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-all" onClick={closeMobileMenu}>
+                  Settings
                 </Link>
                 
                 <button onClick={handleLogout} className="w-full mt-2 px-3 py-2 rounded-lg text-base font-medium text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all">

@@ -15,6 +15,10 @@ class UserSerializer(serializers.ModelSerializer):
     username = serializers.CharField(read_only=True)
     # Role is read-only to ensure it's not changed accidentally.
     role = serializers.CharField(read_only=True)
+    # Add helper field to check if user is OAuth user
+    is_oauth_user = serializers.SerializerMethodField()
+    # Add service areas count for cleaners
+    service_areas_count = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -28,14 +32,36 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 
             'country_code',
             'profile_picture', 
-            'is_active'
+            'is_active',
+            'oauth_provider',  # Show which OAuth provider (google, etc.) or null
+            'is_oauth_user',  # Boolean helper field
+            'email_verified',  # Email verification status
+            'email_verified_at',  # When email was verified
+            'is_verified_cleaner',  # Admin-verified cleaner badge
+            'verified_at',  # When cleaner was verified
+            'service_areas_count',  # Count of service areas (for cleaners)
         ]
         read_only_fields = [
             'email',
             'username',
             'role', 
-            'is_active'
+            'is_active',
+            'oauth_provider',
+            'email_verified',
+            'email_verified_at',
+            'is_verified_cleaner',
+            'verified_at',
         ]
+    
+    def get_is_oauth_user(self, obj):
+        """Check if user registered via OAuth."""
+        return obj.is_oauth_user()
+    
+    def get_service_areas_count(self, obj):
+        """Get count of service areas for cleaners."""
+        if obj.role == 'cleaner':
+            return obj.service_areas.count()
+        return None
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
@@ -65,15 +91,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         required=True,
         validators=[MinLengthValidator(8)],
         style={'input_type': 'password'}
-    )
-
-    # Add username field with unique validation
-    username = serializers.CharField(
-        required=True,
-        validators=[UniqueValidator(
-            queryset=User.objects.all(),
-            message="A user with this username already exists."
-        )]
     )
 
     class Meta:

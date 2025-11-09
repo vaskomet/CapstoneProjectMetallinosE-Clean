@@ -75,7 +75,51 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     preferences = models.JSONField(blank=True, null=True)
     oauth_provider = models.CharField(max_length=50, blank=True, null=True)
-    verification_token = models.CharField(max_length=255, blank=True, null=True)
+    
+    # Email verification fields
+    email_verified = models.BooleanField(
+        default=False,
+        help_text="Whether user's email has been verified"
+    )
+    email_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When email was verified"
+    )
+    verification_token = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Token for email verification"
+    )
+    verification_token_expires = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Expiration time for verification token (30 minutes after generation)"
+    )
+    
+    # Verified cleaner badge (admin-approved)
+    is_verified_cleaner = models.BooleanField(
+        default=False,
+        help_text="Admin-verified cleaner (ID and resume checked)"
+    )
+    verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When cleaner was verified by admin"
+    )
+    verified_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_cleaners',
+        help_text="Admin who verified this cleaner"
+    )
+    verification_notes = models.TextField(
+        blank=True,
+        help_text="Admin notes about verification (private, not shown to user)"
+    )
     
     # Stripe integration fields
     stripe_customer_id = models.CharField(
@@ -127,6 +171,47 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+    
+    def is_oauth_user(self):
+        """
+        Check if this user registered via OAuth (Google, etc.)
+        OAuth users don't have passwords and shouldn't be able to change password.
+        """
+        return bool(self.oauth_provider)
+    
+    def has_usable_password(self):
+        """
+        Override to check if user has a usable password.
+        OAuth users have unusable passwords and can't log in with password.
+        """
+        if self.oauth_provider:
+            return False
+        return super().has_usable_password()
+    
+    def mark_email_verified(self):
+        """Mark user's email as verified."""
+        self.email_verified = True
+        self.email_verified_at = timezone.now()
+        self.verification_token = None  # Clear token after verification
+        self.save(update_fields=['email_verified', 'email_verified_at', 'verification_token'])
+    
+    def can_post_jobs(self):
+        """Check if client can post jobs (email must be verified)."""
+        if self.role != 'client':
+            return False
+        # OAuth users are auto-verified
+        if self.oauth_provider:
+            return True
+        return self.email_verified
+    
+    def can_bid_on_jobs(self):
+        """Check if cleaner can bid on jobs (email must be verified)."""
+        if self.role != 'cleaner':
+            return False
+        # OAuth users are auto-verified
+        if self.oauth_provider:
+            return True
+        return self.email_verified
 
 
 class ServiceArea(models.Model):

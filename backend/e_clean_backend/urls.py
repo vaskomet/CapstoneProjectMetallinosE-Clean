@@ -20,15 +20,29 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
 from users.profile_views import CleanerPublicProfileView, ClientPublicProfileView
+from users.oauth_views import GoogleOAuthRedirectView, OAuthCallbackView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # API endpoints for user authentication
+    # API endpoints for user authentication (EXISTING - JWT-based)
     path('api/auth/', include('users.urls')),
     
     # Endpoint for refreshing JWT access tokens
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # Custom Google OAuth redirect (auto-redirects to Google without intermediate page)
+    path('auth/google/', GoogleOAuthRedirectView.as_view(), name='google_oauth_redirect'),
+    
+    # OAuth callback - generates JWT tokens and redirects to frontend
+    path('auth/oauth-callback/', OAuthCallbackView.as_view(), name='oauth_callback'),
+    
+    # Google OAuth endpoints from django-allauth
+    # ONLY these URLs are used (adapter prevents signup forms):
+    # - /accounts/google/login/ - Initiates Google OAuth flow
+    # - /accounts/google/login/callback/ - Handles Google OAuth callback
+    # All other allauth URLs (signup, password reset, etc.) are disabled via CustomAccountAdapter
+    path('accounts/', include('allauth.urls')),
 
     # Nests property and service type endpoints under /api/properties/ for modularity
     path('api/properties/', include('properties.urls')),

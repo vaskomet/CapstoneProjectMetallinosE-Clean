@@ -275,15 +275,32 @@ export default function Profile() {
 
             {!showPasswordForm ? (
               <div className="text-center space-y-6">
-                <p className="text-gray-600">
-                  Keep your account secure by using a strong password
-                </p>
-                <button
-                  onClick={() => setShowPasswordForm(true)}
-                  className="w-full flex justify-center items-center px-6 py-4 border border-transparent text-lg font-semibold rounded-2xl text-white bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 hover:from-green-700 hover:via-emerald-700 hover:to-teal-700 focus:outline-none focus:ring-4 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                >
-                  Change Password
-                </button>
+                {user?.is_oauth_user ? (
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 space-y-3">
+                    <div className="flex items-center justify-center gap-2 text-blue-700">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="font-semibold">OAuth Account</p>
+                    </div>
+                    <p className="text-gray-700">
+                      You signed in with <span className="font-semibold capitalize">{user.oauth_provider}</span>. 
+                      Password changes are managed through your {user.oauth_provider} account.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-gray-600">
+                      Keep your account secure by using a strong password
+                    </p>
+                    <button
+                      onClick={() => setShowPasswordForm(true)}
+                      className="w-full flex justify-center items-center px-6 py-4 border border-transparent text-lg font-semibold rounded-2xl text-white bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 hover:from-green-700 hover:via-emerald-700 hover:to-teal-700 focus:outline-none focus:ring-4 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                    >
+                      Change Password
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <form onSubmit={handlePasswordSubmit} className="space-y-6">

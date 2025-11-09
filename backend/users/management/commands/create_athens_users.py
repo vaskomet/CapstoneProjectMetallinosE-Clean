@@ -174,6 +174,12 @@ class Command(BaseCommand):
                         phone_number=cleaner_data['phone']
                     )
                     
+                    # Auto-verify synthetic test users (no email verification needed for testing)
+                    cleaner.email_verified = True
+                    from django.utils import timezone
+                    cleaner.email_verified_at = timezone.now()
+                    cleaner.save()
+                    
                     # Create service areas
                     for area_data in cleaner_data['service_areas']:
                         ServiceArea.objects.create(
@@ -288,6 +294,12 @@ class Command(BaseCommand):
                         role='client',
                         phone_number=client_data['phone']
                     )
+                    
+                    # Auto-verify synthetic test users (no email verification needed for testing)
+                    client.email_verified = True
+                    from django.utils import timezone
+                    client.email_verified_at = timezone.now()
+                    client.save()
                     
                     # Create property
                     prop_data = client_data['property']

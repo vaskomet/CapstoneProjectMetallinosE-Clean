@@ -3,13 +3,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import UserRegistrationSerializer, UserSerializer, PasswordChangeSerializer, ServiceAreaSerializer
 from .models import ServiceArea
 from .location_utils import find_cleaners_by_location, find_cleaners_by_city, find_cleaners_by_postal_code
+from .email_verification import send_verification_email
+from .throttles import ResendVerificationThrottle
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
@@ -47,14 +49,13 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
                 # Login with username
                 user = User.objects.get(username=login_identifier)
         except User.DoesNotExist:
-            if '@' in login_identifier:
-                raise serializers.ValidationError('No account found with this email address.')
-            else:
-                raise serializers.ValidationError('No account found with this username.')
+            # Use generic error message to prevent user enumeration
+            raise serializers.ValidationError('Invalid credentials. Please check your email/username and password.')
         
         # User exists, now check password
         if not user.check_password(password):
-            raise serializers.ValidationError('Incorrect password. Please try again.')
+            # Use same generic error message to prevent user enumeration
+            raise serializers.ValidationError('Invalid credentials. Please check your email/username and password.')
         
         # Check if user account is active
         if not user.is_active:
@@ -90,6 +91,10 @@ class RegisterView(generics.CreateAPIView):
         if serializer.is_valid():
             user = serializer.save()
             
+            # Send verification email to non-OAuth users
+            if not user.oauth_provider:
+                send_verification_email(user)
+            
             # Generate JWT tokens for the new user
             refresh = RefreshToken.for_user(user)
             access = refresh.access_token
@@ -99,7 +104,8 @@ class RegisterView(generics.CreateAPIView):
                 "user": UserSerializer(user, context=self.get_serializer_context()).data,
                 "access": str(access),
                 "refresh": str(refresh),
-                "message": "User created successfully."
+                "message": "User created successfully. Please check your email to verify your account.",
+                "email_sent": not user.oauth_provider  # True if verification email was sent
             }, status=status.HTTP_201_CREATED)
         # Return 400 for invalid registration data
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -119,10 +125,21 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 class PasswordChangeView(APIView):
     """
     Change user password with current password validation.
+    OAuth users cannot change passwords as they authenticate through their provider.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # Check if user is OAuth user
+        if request.user.is_oauth_user():
+            return Response(
+                {
+                    "error": "OAuth users cannot change passwords. You log in through your OAuth provider (e.g., Google).",
+                    "oauth_provider": request.user.oauth_provider
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
@@ -258,3 +275,99 @@ def search_cleaners_by_location(request):
         'cleaners': results,
         'unit': unit
     })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_email_view(request):
+    """
+    Verify user's email with token.
+    
+    POST /api/auth/verify-email/
+    Body: {"token": "verification_token"}
+    """
+    from django.utils import timezone
+    
+    token = request.data.get('token')
+    
+    if not token:
+        return Response(
+            {'error': 'Verification token is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(verification_token=token)
+        
+        # Check if already verified
+        if user.email_verified:
+            return Response({
+                'message': 'Email already verified',
+                'email_verified': True,
+                'user_role': user.role
+            }, status=status.HTTP_200_OK)
+        
+        # Check if token has expired
+        if user.verification_token_expires and timezone.now() >= user.verification_token_expires:
+            return Response({
+                'error': 'Verification link has expired',
+                'expired': True,
+                'message': 'This verification link has expired. Please request a new one.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mark as verified
+        user.mark_email_verified()
+        
+        return Response({
+            'message': 'Email verified successfully!',
+            'email_verified': True,
+            'user_role': user.role
+        }, status=status.HTTP_200_OK)
+        
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'Invalid verification token'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ResendVerificationThrottle])
+def resend_verification_email_view(request):
+    """
+    Resend verification email to authenticated user.
+    Rate limited to 5 requests per hour per user.
+    
+    POST /api/auth/resend-verification/
+    """
+    user = request.user
+    
+    # Check if OAuth user
+    if user.oauth_provider:
+        return Response(
+            {'error': 'OAuth users are automatically verified'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if already verified
+    if user.email_verified:
+        return Response(
+            {'error': 'Email is already verified'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Send verification email
+    success = send_verification_email(user)
+    
+    if success:
+        return Response({
+            'message': 'Verification email sent successfully. Please check your inbox.'
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response(
+            {'error': 'Failed to send verification email. Please try again later.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

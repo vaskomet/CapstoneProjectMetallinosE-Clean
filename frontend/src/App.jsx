@@ -12,11 +12,12 @@ import ConnectionStateIndicator from './components/chat/ConnectionStateIndicator
 import DirectMessages from './components/chat/DirectMessages';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
+import OAuthCallback from './pages/OAuthCallback';
+import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './components/Dashboard';
 import PropertiesDashboard from './components/PropertiesDashboard';
 import CleaningJobsPool from './components/CleaningJobsPool';
 import CompletedJobsDashboard from './components/CompletedJobsDashboard';
-import Profile from './components/Profile';
 import ChatPage from './pages/ChatPage';
 import FindCleaners from './pages/FindCleaners';
 import Payments from './pages/Payments';
@@ -24,8 +25,14 @@ import Payouts from './pages/Payouts';
 import AdminFinancials from './pages/AdminFinancials';
 import CleanerProfilePage from './components/CleanerProfilePage';
 import ClientProfilePage from './components/ClientProfilePage';
-// import PaymentHistory from './pages/PaymentHistory.jsx';
-// import StripeConnect from './pages/StripeConnect.jsx';
+// Modern settings pages
+import SettingsLayout from './pages/settings/SettingsLayout';
+import ProfileSettings from './pages/settings/ProfileSettings';
+import SecuritySettings from './pages/settings/SecuritySettings';
+import NotificationsSettings from './pages/settings/NotificationsSettings';
+import ServiceAreasSettings from './pages/settings/ServiceAreasSettings';
+import ConnectedAccountsSettings from './pages/settings/ConnectedAccountsSettings';
+import AccountSettings from './pages/settings/AccountSettings';
 import './utils/globalSetup'; // Initialize global error handling
 import './App.css';
 
@@ -47,6 +54,8 @@ function App() {
                 <Routes>
                   <Route path="/login" element={<LoginForm />} />
                   <Route path="/register" element={<RegisterForm />} />
+                  <Route path="/auth/callback" element={<OAuthCallback />} />
+                  <Route path="/verify-email/:token" element={<VerifyEmail />} />
                   <Route 
                     path="/dashboard" 
                     element={
@@ -103,14 +112,26 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
+                {/* Modern Settings Pages with Nested Routes */}
                 <Route 
-                  path="/profile" 
+                  path="/settings"
                   element={
                     <ProtectedRoute>
-                      <Profile />
+                      <SettingsLayout />
                     </ProtectedRoute>
-                  } 
-                />
+                  }
+                >
+                  {/* Redirect /settings to /settings/profile */}
+                  <Route index element={<Navigate to="/settings/profile" replace />} />
+                  <Route path="profile" element={<ProfileSettings />} />
+                  <Route path="security" element={<SecuritySettings />} />
+                  <Route path="notifications" element={<NotificationsSettings />} />
+                  <Route path="service-areas" element={<ServiceAreasSettings />} />
+                  <Route path="connected-accounts" element={<ConnectedAccountsSettings />} />
+                  <Route path="account" element={<AccountSettings />} />
+                </Route>
+                {/* Legacy /profile route - redirect to new settings */}
+                <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
                 <Route 
                   path="/cleaner/:cleanerId" 
                   element={<CleanerProfilePage />} 

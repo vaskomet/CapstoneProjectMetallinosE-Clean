@@ -11,6 +11,7 @@ import { useUser } from '../contexts/UserContext';
 import { api } from '../services/api';
 import ReviewList from './ReviewList';
 import ReviewStats from './ReviewStats';
+import VerifiedBadge from './VerifiedBadge';
 
 const CleanerProfilePage = () => {
   const { cleanerId } = useParams();
@@ -122,7 +123,12 @@ const CleanerProfilePage = () => {
               
               {/* Name and stats */}
               <div className="mt-4 md:mt-0 flex-1">
-                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">{fullName}</h1>
+                <div className="flex items-center gap-3 mb-2">
+                  <h1 className="text-3xl md:text-4xl font-bold text-gray-900">{fullName}</h1>
+                  {profile.is_verified_cleaner && (
+                    <VerifiedBadge size="lg" showText={true} />
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-4 text-gray-600">
                   <div className="flex items-center space-x-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

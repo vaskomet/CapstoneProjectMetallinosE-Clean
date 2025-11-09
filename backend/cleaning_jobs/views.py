@@ -189,10 +189,23 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         
         Clients can list/create their own jobs, admins can view all;
         post sets initial pending status and calculates pricing.
+        
+        Requires email verification for non-OAuth users.
         """
         # Ensure only clients can create jobs
         if hasattr(request.user, 'role') and request.user.role not in ['client', 'admin']:
             raise PermissionDenied("Only clients can create cleaning jobs.")
+        
+        # Check email verification (mandatory for job posting)
+        if not request.user.can_post_jobs():
+            return Response(
+                {
+                    'error': 'Email verification required',
+                    'message': 'You must verify your email address before posting jobs. Check your inbox for the verification email.',
+                    'email_verified': request.user.email_verified
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -537,9 +550,21 @@ class JobBidListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         """
         Create new bid (only cleaners can bid).
+        Requires email verification for non-OAuth users.
         """
         if not (hasattr(request.user, 'role') and request.user.role == 'cleaner'):
             raise PermissionDenied("Only cleaners can submit bids.")
+        
+        # Check email verification (mandatory for bidding)
+        if not request.user.can_bid_on_jobs():
+            return Response(
+                {
+                    'error': 'Email verification required',
+                    'message': 'You must verify your email address before bidding on jobs. Check your inbox for the verification email.',
+                    'email_verified': request.user.email_verified
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

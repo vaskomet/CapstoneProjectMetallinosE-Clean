@@ -49,10 +49,19 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',  # Required by django-allauth
     # 'django.contrib.gis',  # Temporarily disabled - will be re-enabled with PostGIS setup
     'rest_framework',
     'corsheaders',
     'channels',  # WebSocket support
+    
+    # Authentication and Social Login (allauth)
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',  # Google OAuth provider
+    
+    # Project apps
     'core',  # Core services (events, subscribers)
     'users',
     'properties',
@@ -74,6 +83,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # django-allauth middleware (must be after AuthenticationMiddleware)
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 CORS_ALLOWED_ORIGINS = [
@@ -177,10 +188,32 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
 
+# Email Configuration
+# SendGrid SMTP for both development and production
+# All credentials now loaded from environment variables for security
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.sendgrid.net')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'apikey')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'E-Clean <noreply@example.com>')
+EMAIL_SUBJECT_PREFIX = '[E-Clean] '
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
+# For development testing: console backend (optional - currently using SendGrid)
+# To use console email backend, set EMAIL_BACKEND env var to:
+# EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+
+# Django Sites Framework (required by allauth)
+SITE_ID = 1
+
 # Custom authentication backend for email and username login
 AUTHENTICATION_BACKENDS = [
     'users.backends.EmailUsernameBackend',
     'django.contrib.auth.backends.ModelBackend',
+    # django-allauth backend for social authentication
+    'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
 REST_FRAMEWORK = {
@@ -375,6 +408,57 @@ RECOMMENDATION_FEATURE_CONFIG = {
         'commercial': 3,
     },
 }
+
+# ===========================
+# Django Allauth Configuration
+# ===========================
+
+# Email verification settings (OPTIONAL - won't block registration or login)
+ACCOUNT_EMAIL_VERIFICATION = 'optional'  # Users can verify email but not required
+ACCOUNT_EMAIL_REQUIRED = True            # Required by allauth when using email authentication
+ACCOUNT_AUTHENTICATION_METHOD = 'username_email'  # Allow both email and username
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False  # Don't auto-login on verification
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = '/login/'
+ACCOUNT_SIGNUP_EMAIL_ENTER_TWICE = False  # Single email input (like your form)
+ACCOUNT_USERNAME_REQUIRED = True         # We have username field in our model
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+
+# Disable allauth's built-in signup (we use custom RegisterView)
+ACCOUNT_ADAPTER = 'users.adapters.CustomAccountAdapter'
+SOCIALACCOUNT_ADAPTER = 'users.adapters.CustomSocialAccountAdapter'
+
+# Login/logout URLs - redirect to custom OAuth callback that generates JWT tokens
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/auth/oauth-callback/'  # Custom view that generates JWT tokens
+ACCOUNT_LOGOUT_REDIRECT_URL = '/login/'
+
+# Social authentication providers
+# NOTE: APP configuration is stored in database (SocialApp model), not here
+# Adding 'APP' dict here causes MultipleObjectsReturned error
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+            'prompt': 'select_account',  # Force account selection every time
+        },
+        # APP credentials are in database - do not uncomment
+        # 'APP': {
+        #     'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
+        #     'secret': os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', ''),
+        #     'key': ''
+        # }
+    }
+}
+
+# Social account settings
+SOCIALACCOUNT_AUTO_SIGNUP = True  # Auto-create account from social login
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'optional'  # Don't require verification for social logins
+SOCIALACCOUNT_QUERY_EMAIL = True  # Request email from social provider
 
 # A/B testing configuration (optional - for future use)
 RECOMMENDATION_AB_TEST_ENABLED = os.getenv('RECOMMENDATION_AB_TEST_ENABLED', 'false').lower() == 'true'
