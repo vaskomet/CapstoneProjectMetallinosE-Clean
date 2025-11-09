@@ -143,9 +143,10 @@ class NNRecommendationEngine:
         if self.use_cache:
             cache.set(cache_key, recommendations, self.cache_ttl)
         
+        top_score_str = f"{recommendations[0]['match_score']:.3f}" if recommendations else 'N/A'
         logger.info(
             f"Returning {len(recommendations)} NN recommendations for job {job.id} "
-            f"(top score: {recommendations[0]['match_score']:.3f if recommendations else 'N/A'})"
+            f"(top score: {top_score_str})"
         )
         
         return recommendations

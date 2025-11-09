@@ -196,9 +196,10 @@ class NNFeatureExtractor:
         total_jobs = CleaningJob.objects.filter(property=property).count()
         features['prop_total_jobs'] = float(total_jobs)
         
-        # Special requirements
-        features['prop_eco_friendly'] = 1.0 if property.eco_friendly_preference else 0.0
-        features['prop_pet_present'] = 1.0 if property.has_pets else 0.0
+        # Special requirements (from preferences JSONField)
+        prefs = property.preferences or {}
+        features['prop_eco_friendly'] = 1.0 if prefs.get('eco_friendly') else 0.0
+        features['prop_pet_present'] = 1.0 if prefs.get('pet_present') or prefs.get('has_pets') else 0.0
         
         # Cache for 1 hour
         if self.use_cache:
@@ -397,9 +398,9 @@ class NNFeatureExtractor:
         days_until = (job.scheduled_date - reference_date.date()).days
         features['ctx_urgency_days'] = float(max(days_until, 0))
         
-        # Price range (one-hot encoding based on expected_price)
+        # Price range (one-hot encoding based on client_budget)
         # Low: < 80, Medium: 80-150, High: > 150
-        expected_price = float(job.expected_price) if job.expected_price else 100.0
+        expected_price = float(job.client_budget) if job.client_budget else 100.0
         features['ctx_price_low'] = 1.0 if expected_price < 80 else 0.0
         features['ctx_price_medium'] = 1.0 if 80 <= expected_price <= 150 else 0.0
         features['ctx_price_high'] = 1.0 if expected_price > 150 else 0.0
@@ -407,9 +408,10 @@ class NNFeatureExtractor:
         # Service complexity (based on size and special requirements)
         size = float(job.property.size_sqft) if job.property.size_sqft else 100.0
         complexity = size / 100.0  # Normalize
-        if job.property.has_pets:
+        prefs = job.property.preferences or {}
+        if prefs.get('pet_present') or prefs.get('has_pets'):
             complexity *= 1.2
-        if job.property.eco_friendly_preference:
+        if prefs.get('eco_friendly'):
             complexity *= 1.1
         features['ctx_service_complexity'] = complexity
         
@@ -453,8 +455,8 @@ class NNFeatureExtractor:
         dimensions = ['quality', 'communication', 'timeliness', 'professionalism']
         
         for dimension in dimensions:
-            ratings = review_ratings.filter(rating_type=dimension)
-            avg = ratings.aggregate(Avg('rating_value'))['rating_value__avg']
+            ratings = review_ratings.filter(category=dimension)
+            avg = ratings.aggregate(Avg('rating'))['rating__avg']
             features[f'rating_{dimension}'] = float(avg) if avg else 0.0
         
         return features

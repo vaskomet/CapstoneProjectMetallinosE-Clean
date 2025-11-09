@@ -413,3 +413,174 @@ def ml_service_status(request):
             'service_url': ml_client.base_url,
             'error': str(e)
         }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_nn_recommendations(request):
+    """
+    Get neural network-based cleaner recommendations for a job.
+    
+    POST body:
+        {
+            "job_id": 123,
+            "cleaner_ids": [1, 2, 3],  // Optional: specific cleaners to rank
+            "top_k": 10,  // Optional: number of recommendations (default: 10)
+            "min_score": 0.0  // Optional: minimum match score threshold (default: 0.0)
+        }
+    
+    Returns:
+        {
+            "job_id": 123,
+            "count": 5,
+            "recommendations": [
+                {
+                    "cleaner_id": 45,
+                    "cleaner": {...user data...},
+                    "match_score": 0.87,  // 0-1 scale from neural network
+                    "denormalized_rating": 9.35,  // 5-10 scale
+                    "inference_time_ms": 31.2,
+                    "method": "neural_network"  // or "hybrid_fallback"
+                }
+            ],
+            "method": "neural_network",
+            "cached": false,
+            "processing_time_ms": 145.3
+        }
+    """
+    import time
+    from .services.nn_recommendation_engine import get_nn_recommendation_engine
+    
+    start_time = time.time()
+    
+    # Validate request data
+    job_id = request.data.get('job_id')
+    if not job_id:
+        return Response(
+            {'error': 'job_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get job
+    try:
+        job = CleaningJob.objects.get(id=job_id)
+    except CleaningJob.DoesNotExist:
+        return Response(
+            {'error': f'Job {job_id} not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Check permissions: only job owner can get recommendations
+    if job.client != request.user and not request.user.is_staff:
+        return Response(
+            {'error': 'You do not have permission to access this job'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Get optional parameters
+    cleaner_ids = request.data.get('cleaner_ids')
+    top_k = int(request.data.get('top_k', 10))
+    min_score = float(request.data.get('min_score', 0.0))
+    
+    # Validate parameters
+    if top_k < 1 or top_k > 100:
+        return Response(
+            {'error': 'top_k must be between 1 and 100'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if min_score < 0.0 or min_score > 1.0:
+        return Response(
+            {'error': 'min_score must be between 0.0 and 1.0'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get NN recommendations
+    try:
+        engine = get_nn_recommendation_engine(use_cache=True)
+        
+        recommendations = engine.get_recommendations(
+            job=job,
+            cleaner_ids=cleaner_ids,
+            top_k=top_k,
+            min_score=min_score,
+            use_fallback=True
+        )
+        
+        # Serialize cleaner data
+        serialized_recommendations = []
+        for rec in recommendations:
+            serialized_recommendations.append({
+                'cleaner_id': rec['cleaner_id'],
+                'cleaner': UserSerializer(rec['cleaner']).data,
+                'match_score': round(rec['match_score'], 4),
+                'denormalized_rating': round(rec['denormalized_rating'], 2),
+                'inference_time_ms': round(rec.get('inference_time_ms', 0), 2),
+                'method': rec['method']
+            })
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        # Determine if any used fallback
+        methods_used = set(rec['method'] for rec in recommendations)
+        primary_method = 'neural_network' if 'neural_network' in methods_used else 'hybrid_fallback'
+        
+        return Response({
+            'job_id': job.id,
+            'count': len(serialized_recommendations),
+            'recommendations': serialized_recommendations,
+            'method': primary_method,
+            'cached': False,  # TODO: Detect if from cache
+            'processing_time_ms': round(processing_time, 2)
+        })
+        
+    except Exception as e:
+        logger.error(f"NN recommendation error for job {job_id}: {str(e)}", exc_info=True)
+        return Response(
+            {'error': f'Failed to get recommendations: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_nn_model_info(request):
+    """
+    Get neural network model information.
+    
+    Returns:
+        {
+            "available": true,
+            "model_info": {
+                "model_name": "CleanerMatchNN",
+                "architecture": [256, 128, 64, 32],
+                "total_parameters": 152833,
+                "num_features": 427,
+                "test_r2_score": 0.9119,
+                "test_mse": 0.0065,
+                "test_mae": 0.0641
+            }
+        }
+    """
+    from .services.ml_client import get_nn_model_info as get_model_metadata
+    
+    try:
+        model_info = get_model_metadata()
+        
+        if model_info is None:
+            return Response({
+                'available': False,
+                'error': 'Neural network model not available'
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        
+        return Response({
+            'available': True,
+            'model_info': model_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get NN model info: {str(e)}")
+        return Response({
+            'available': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
