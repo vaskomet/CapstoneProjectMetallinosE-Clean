@@ -11,6 +11,10 @@ import JobWorkflowModal from './JobWorkflowModal';
 import PaymentModal from './payments/PaymentModal';
 import EmailVerificationBanner from './EmailVerificationBanner';
 import ServiceAreaBanner from './ServiceAreaBanner';
+import JobCard from './jobs/JobCard';
+import JobListItem from './jobs/JobListItem';
+import SearchFilterBar from './jobs/SearchFilterBar';
+import EmptyState from './jobs/EmptyState';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -158,6 +162,12 @@ const CleaningJobsPool = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false); // Payment modal visibility
   const [paymentJobData, setPaymentJobData] = useState(null); // Job data for payment (job ID, amount, title)
   const [pendingBidId, setPendingBidId] = useState(null); // Bid ID pending payment confirmation
+
+  // View mode state (Phase 4: UX improvements)
+  const [viewMode, setViewMode] = useState('calendar'); // 'calendar', 'card', 'list'
+  const [searchTerm, setSearchTerm] = useState(''); // Search query
+  const [priceRange, setPriceRange] = useState({ min: '', max: '' }); // Price filters
+  const [dateRange, setDateRange] = useState({ from: '', to: '' }); // Date filters
 
   // Ref to prevent multiple simultaneous fetch calls
   const fetchingRef = useRef(false);
@@ -844,6 +854,79 @@ const CleaningJobsPool = () => {
           </div>
         )}
 
+        {/* Search and Filter Bar (Phase 4) */}
+        <SearchFilterBar
+          filters={{
+            search: searchTerm,
+            priceMin: priceRange.min,
+            priceMax: priceRange.max,
+            dateFrom: dateRange.from,
+            dateTo: dateRange.to,
+          }}
+          onFilterChange={(newFilters) => {
+            setSearchTerm(newFilters.search || '');
+            setPriceRange({ min: newFilters.priceMin || '', max: newFilters.priceMax || '' });
+            setDateRange({ from: newFilters.dateFrom || '', to: newFilters.dateTo || '' });
+          }}
+          onReset={() => {
+            setSearchTerm('');
+            setPriceRange({ min: '', max: '' });
+            setDateRange({ from: '', to: '' });
+          }}
+        />
+
+        {/* View Mode Toggle (Phase 4) */}
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2 bg-white rounded-lg shadow-md p-1">
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+                viewMode === 'calendar'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="hidden sm:inline font-medium">Calendar</span>
+            </button>
+            <button
+              onClick={() => setViewMode('card')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+                viewMode === 'card'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              <span className="hidden sm:inline font-medium">Cards</span>
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors duration-200 ${
+                viewMode === 'list'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              <span className="hidden sm:inline font-medium">List</span>
+            </button>
+          </div>
+
+          {/* Results count */}
+          {!loading && (
+            <span className="text-sm text-gray-600">
+              {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} found
+            </span>
+          )}
+        </div>
+
         {/* Loading State - Spinner during data fetch */}
         {loading && (
           <div className="flex justify-center items-center py-12">
@@ -859,8 +942,85 @@ const CleaningJobsPool = () => {
           </div>
         )}
 
-        {/* Main Calendar View - FullCalendar.js integration */}
+        {/* Jobs Display - Conditional rendering based on view mode */}
         {!loading && !error && (
+          <>
+            {/* Empty State */}
+            {jobs.length === 0 && (
+              <EmptyState
+                type={searchTerm || priceRange.min || priceRange.max || dateRange.from || dateRange.to ? 'filtered' : 'no-jobs'}
+                actionLabel={user?.role === 'client' && properties.length > 0 ? 'Create New Job' : null}
+                onAction={() => setShowCreateModal(true)}
+              />
+            )}
+
+            {/* Calendar View */}
+            {viewMode === 'calendar' && jobs.length > 0 && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <FullCalendar
+                  plugins={[dayGridPlugin, timeGridPlugin, listPlugin]}
+                  initialView="dayGridMonth"
+                  events={calendarEvents}
+                  eventClick={handleEventClick}
+                  headerToolbar={{
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,listWeek'
+                  }}
+                  height="auto"
+                  eventDisplay="block"
+                  dayMaxEvents={3}
+                  moreLinkClick="popover"
+                />
+              </div>
+            )}
+
+            {/* Card Grid View */}
+            {viewMode === 'card' && jobs.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {jobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onViewDetails={() => {
+                      setSelectedJob(job);
+                      setShowJobModal(true);
+                    }}
+                    onBid={() => {
+                      setSelectedJob(job);
+                      setShowBidModal(true);
+                    }}
+                    userRole={user?.role}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* List View */}
+            {viewMode === 'list' && jobs.length > 0 && (
+              <div className="bg-white rounded-lg shadow-md overflow-hidden">
+                {jobs.map((job) => (
+                  <JobListItem
+                    key={job.id}
+                    job={job}
+                    onViewDetails={() => {
+                      setSelectedJob(job);
+                      setShowJobModal(true);
+                    }}
+                    onBid={() => {
+                      setSelectedJob(job);
+                      setShowBidModal(true);
+                    }}
+                    userRole={user?.role}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Original FullCalendar (hidden, keeping for reference) */}
+        {false && !loading && !error && (
           <div className="bg-white rounded-lg shadow-md p-6">
             <FullCalendar
               plugins={[dayGridPlugin, timeGridPlugin, listPlugin]}
