@@ -7,7 +7,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from django.utils import timezone
 from django.db import transaction
 
@@ -172,6 +172,42 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         status_filter = self.request.query_params.get('status')
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+        
+        # ========== SEARCH FUNCTIONALITY ==========
+        # Multi-field search across job description, property address, and notes
+        search_query = self.request.query_params.get('search')
+        if search_query:
+            from django.db.models import Q
+            queryset = queryset.filter(
+                Q(services_description__icontains=search_query) |
+                Q(property__address__icontains=search_query) |
+                Q(property__address_line1__icontains=search_query) |
+                Q(notes__icontains=search_query)
+            )
+        
+        # ========== PRICE RANGE FILTERING ==========
+        # Filter by minimum and/or maximum client budget
+        price_min = self.request.query_params.get('price_min')
+        price_max = self.request.query_params.get('price_max')
+        if price_min:
+            try:
+                queryset = queryset.filter(client_budget__gte=float(price_min))
+            except (ValueError, TypeError):
+                pass  # Invalid price_min, ignore filter
+        if price_max:
+            try:
+                queryset = queryset.filter(client_budget__lte=float(price_max))
+            except (ValueError, TypeError):
+                pass  # Invalid price_max, ignore filter
+        
+        # ========== DATE RANGE FILTERING ==========
+        # Filter by scheduled date range
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            queryset = queryset.filter(scheduled_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(scheduled_date__lte=date_to)
         
         return queryset
     
@@ -652,3 +688,45 @@ class AcceptBidView(generics.UpdateAPIView):
             'cleaner': bid.cleaner.username,
             'final_price': str(bid.bid_amount)
         }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def job_statistics(request):
+    """
+    Get job statistics based on user role.
+    
+    Returns:
+        - total: Total number of jobs visible to user
+        - open_for_bids: Jobs currently accepting bids
+        - pending: Jobs with accepted bid or confirmed (awaiting start)
+        - in_progress: Jobs currently being worked on
+        - completed: Finished jobs
+    """
+    user = request.user
+    
+    # Role-based job filtering
+    if hasattr(user, 'role') and user.role == 'admin':
+        jobs = CleaningJob.objects.all()
+    elif hasattr(user, 'role') and user.role == 'client':
+        jobs = CleaningJob.objects.filter(client=user)
+    elif hasattr(user, 'role') and user.role == 'cleaner':
+        from django.db.models import Q
+        jobs = CleaningJob.objects.filter(
+            Q(status='open_for_bids') | Q(cleaner=user)
+        )
+    else:
+        # Fallback for users without role
+        jobs = CleaningJob.objects.none()
+    
+    # Calculate statistics
+    stats = {
+        'total': jobs.count(),
+        'open_for_bids': jobs.filter(status='open_for_bids').count(),
+        'pending': jobs.filter(status__in=['bid_accepted', 'confirmed']).count(),
+        'in_progress': jobs.filter(status='in_progress').count(),
+        'completed': jobs.filter(status='completed').count(),
+        'cancelled': jobs.filter(status='cancelled').count(),
+    }
+    
+    return Response(stats)
