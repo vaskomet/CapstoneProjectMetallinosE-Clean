@@ -419,13 +419,21 @@ export const UnifiedChatProvider = ({ children }) => {
   
   /**
    * Auto-connect when user is available
+   * Only connect if user is authenticated (prevents connection attempts for non-logged-in users)
    */
   useEffect(() => {
-    if (user) {
+    if (user && user.id) {
+      chatLog.debug('User authenticated, connecting to chat WebSocket');
       connect();
+    } else {
+      chatLog.debug('No authenticated user, skipping chat connection');
     }
     
-    return () => disconnect();
+    return () => {
+      if (user && user.id) {
+        disconnect();
+      }
+    };
   }, [user, connect, disconnect]);
   
   const value = {

@@ -195,7 +195,7 @@ class JobWorkflowView(generics.GenericAPIView):
             recipient=job.client,
             notification_type='job_confirmed',
             title="Job Confirmed",
-            message=f"Cleaner {self.request.user.get_full_name()} has confirmed your job for {job.scheduled_date}.",
+            message=f"Cleaner {f'{self.request.user.first_name} {self.request.user.last_name}'.strip() or self.request.user.username} has confirmed your job for {job.scheduled_date}.",
             action_url=f"/client/jobs/{job.id}"
         )
         

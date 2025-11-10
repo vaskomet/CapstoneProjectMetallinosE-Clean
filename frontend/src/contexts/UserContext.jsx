@@ -256,7 +256,21 @@ export function UserProvider({ children }) {
       dispatch({ type: 'SET_USER', payload: response });
       return { success: true };
     } catch (error) {
-      const errorMessage = error.response?.data?.detail || 'Profile update failed';
+      // Check if backend returned field-specific errors (validation errors)
+      const errorData = error.response?.data;
+      
+      if (errorData && typeof errorData === 'object' && !errorData.detail) {
+        // Field-specific errors (e.g., { first_name: ['Error message'], phone_number: ['Error'] })
+        const fieldErrors = {};
+        Object.keys(errorData).forEach(key => {
+          // Backend returns arrays of error messages per field
+          fieldErrors[key] = Array.isArray(errorData[key]) ? errorData[key][0] : errorData[key];
+        });
+        return { success: false, error: fieldErrors };
+      }
+      
+      // Generic error message
+      const errorMessage = errorData?.detail || 'Profile update failed';
       dispatch({ type: 'SET_ERROR', payload: errorMessage });
       return { success: false, error: errorMessage };
     }

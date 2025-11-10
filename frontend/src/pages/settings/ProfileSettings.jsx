@@ -15,53 +15,158 @@ export default function ProfileSettings() {
     phone_number: '',
     country_code: '+30',
   });
+  const [initialData, setInitialData] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     if (user) {
-      setFormData({
+      const userData = {
         first_name: user.first_name || '',
         last_name: user.last_name || '',
         phone_number: user.phone_number || '',
         country_code: user.country_code || '+30',
-      });
+      };
+      setFormData(userData);
+      setInitialData(userData);
     }
   }, [user]);
 
+  // Track unsaved changes
+  useEffect(() => {
+    if (initialData) {
+      const hasChanges = JSON.stringify(formData) !== JSON.stringify(initialData);
+      setHasUnsavedChanges(hasChanges);
+    }
+  }, [formData, initialData]);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const validateField = (name, value) => {
+    const newErrors = { ...errors };
+    
+    switch (name) {
+      case 'first_name':
+        if (value && value.trim().length > 0) {
+          if (value.trim().length < 2) {
+            newErrors.first_name = 'First name must be at least 2 characters long.';
+          } else if (value.length > 150) {
+            newErrors.first_name = 'First name cannot exceed 150 characters.';
+          } else if (!/^[a-zA-ZÀ-ÿ\s\-']+$/.test(value)) {
+            newErrors.first_name = 'First name can only contain letters, spaces, hyphens, and apostrophes.';
+          } else {
+            delete newErrors.first_name;
+          }
+        } else {
+          delete newErrors.first_name;
+        }
+        break;
+        
+      case 'last_name':
+        if (value && value.trim().length > 0) {
+          if (value.trim().length < 2) {
+            newErrors.last_name = 'Last name must be at least 2 characters long.';
+          } else if (value.length > 150) {
+            newErrors.last_name = 'Last name cannot exceed 150 characters.';
+          } else if (!/^[a-zA-ZÀ-ÿ\s\-']+$/.test(value)) {
+            newErrors.last_name = 'Last name can only contain letters, spaces, hyphens, and apostrophes.';
+          } else {
+            delete newErrors.last_name;
+          }
+        } else {
+          delete newErrors.last_name;
+        }
+        break;
+        
+      case 'phone_number':
+        if (value) {
+          const cleaned = value.replace(/[\s\-]/g, '');
+          if (!/^\d+$/.test(cleaned)) {
+            newErrors.phone_number = 'Phone number can only contain digits.';
+          } else if (cleaned.length > 14) {
+            newErrors.phone_number = 'Phone number cannot exceed 14 digits.';
+          } else {
+            const totalLength = (formData.country_code || '').length + cleaned.length;
+            if (totalLength > 14) {
+              newErrors.phone_number = `Phone number with country code cannot exceed 14 characters (currently ${totalLength}).`;
+            } else {
+              delete newErrors.phone_number;
+            }
+          }
+        } else {
+          delete newErrors.phone_number;
+        }
+        break;
+        
+      default:
+        break;
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
+    // Clear message on change
+    setMessage('');
+    // Validate on blur will happen, but clear error on type if fixing
+    if (errors[name]) {
+      validateField(name, value);
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    validateField(name, value);
   };
 
   const handleCountryCodeChange = (countryCode) => {
     setFormData({ ...formData, country_code: countryCode });
+    setMessage('');
+    // Revalidate phone number with new country code
+    if (formData.phone_number) {
+      validateField('phone_number', formData.phone_number);
+    }
   };
 
   const handlePhoneNumberChange = (phoneNumber) => {
     setFormData({ ...formData, phone_number: phoneNumber });
-  };
-
-  const validatePhoneNumber = () => {
-    const fullPhoneNumber = formData.country_code + formData.phone_number;
-    if (fullPhoneNumber.length > 14) {
-      return 'Phone number with country code cannot exceed 14 characters';
+    setMessage('');
+    if (errors.phone_number) {
+      validateField('phone_number', phoneNumber);
     }
-    return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsUpdating(true);
-    setError('');
+    setErrors({});
     setMessage('');
 
-    const phoneError = validatePhoneNumber();
-    if (phoneError) {
-      setError(phoneError);
+    // Validate all fields
+    const firstNameValid = validateField('first_name', formData.first_name);
+    const lastNameValid = validateField('last_name', formData.last_name);
+    const phoneValid = validateField('phone_number', formData.phone_number);
+
+    if (!firstNameValid || !lastNameValid || !phoneValid) {
       setIsUpdating(false);
       return;
     }
@@ -70,8 +175,19 @@ export default function ProfileSettings() {
 
     if (result.success) {
       setMessage('Profile updated successfully!');
+      setInitialData(formData); // Update initial data to reflect saved state
+      setHasUnsavedChanges(false);
+      // Clear message after 3 seconds
+      setTimeout(() => setMessage(''), 3000);
     } else {
-      setError(result.error || 'Failed to update profile');
+      // Parse backend errors
+      if (result.error && typeof result.error === 'object') {
+        // Backend returned field-specific errors
+        setErrors(result.error);
+      } else {
+        // Generic error
+        setErrors({ general: result.error || 'Failed to update profile' });
+      }
     }
 
     setIsUpdating(false);
@@ -79,9 +195,18 @@ export default function ProfileSettings() {
 
   const handleVerificationMessage = (msg, type = 'success') => {
     if (type === 'error') {
-      setError(msg);
+      setErrors({ general: msg });
     } else {
       setMessage(msg);
+    }
+  };
+
+  const handleReset = () => {
+    if (initialData) {
+      setFormData(initialData);
+      setErrors({});
+      setMessage('');
+      setHasUnsavedChanges(false);
     }
   };
 
@@ -104,13 +229,35 @@ export default function ProfileSettings() {
       {/* Messages */}
       {message && (
         <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
-          <p className="text-green-700 font-medium">{message}</p>
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-green-700 font-medium">{message}</p>
+          </div>
         </div>
       )}
 
-      {error && (
+      {errors.general && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-          <p className="text-red-700 font-medium">{error}</p>
+          <div className="flex items-start gap-2">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-red-700 font-medium">{errors.general}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved Changes Warning */}
+      {hasUnsavedChanges && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="text-yellow-700 text-sm font-medium">You have unsaved changes</p>
+          </div>
         </div>
       )}
 
@@ -188,9 +335,20 @@ export default function ProfileSettings() {
                 type="text"
                 value={formData.first_name}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                onBlur={handleBlur}
+                className={`w-full px-4 py-3 border ${
+                  errors.first_name ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-transparent'
+                } rounded-lg focus:outline-none focus:ring-2 transition-all`}
                 placeholder="John"
               />
+              {errors.first_name && (
+                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {errors.first_name}
+                </p>
+              )}
             </div>
 
             <div>
@@ -203,21 +361,30 @@ export default function ProfileSettings() {
                 type="text"
                 value={formData.last_name}
                 onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                onBlur={handleBlur}
+                className={`w-full px-4 py-3 border ${
+                  errors.last_name ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-transparent'
+                } rounded-lg focus:outline-none focus:ring-2 transition-all`}
                 placeholder="Doe"
               />
+              {errors.last_name && (
+                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {errors.last_name}
+                </p>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number
-            </label>
             <PhoneInput
               countryCode={formData.country_code}
               phoneNumber={formData.phone_number}
               onCountryChange={handleCountryCodeChange}
               onPhoneChange={handlePhoneNumberChange}
+              error={errors.phone_number}
             />
             <p className="mt-1 text-xs text-gray-500">
               Total length: {(formData.country_code + formData.phone_number).length}/14 characters
@@ -226,10 +393,20 @@ export default function ProfileSettings() {
         </div>
 
         {/* Submit Button */}
-        <div className="pt-4 flex justify-end">
+        <div className="pt-4 flex justify-end gap-3">
+          {hasUnsavedChanges && (
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={isUpdating}
+              className="px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              Reset Changes
+            </button>
+          )}
           <button
             type="submit"
-            disabled={isUpdating}
+            disabled={isUpdating || Object.keys(errors).length > 0 || !hasUnsavedChanges}
             className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             {isUpdating ? (

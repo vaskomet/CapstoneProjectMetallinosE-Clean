@@ -5,9 +5,14 @@ Defines routing for CRUD operations and status updates with JWT authentication.
 
 from django.urls import path
 from . import views
+from . import dashboard_views
 
 # API endpoints for CleaningJob and JobBid management
 urlpatterns = [
+    # Dashboard stats endpoints
+    path('dashboard/client-stats/', dashboard_views.client_dashboard_stats, name='client-dashboard-stats'),
+    path('dashboard/cleaner-stats/', dashboard_views.cleaner_dashboard_stats, name='cleaner-dashboard-stats'),
+    
     # List all jobs for authenticated user or create new job
     # GET: Returns filtered jobs based on user role (clients see own jobs, cleaners see open_for_bids)
     # POST: Creates new job with initial 'open_for_bids' status and client assignment

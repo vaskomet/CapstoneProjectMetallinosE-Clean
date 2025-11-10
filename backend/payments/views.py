@@ -245,15 +245,19 @@ class ConfirmPaymentView(views.APIView):
                         trans.save()
                     
                     # Publish event for real-time notification to cleaner
-                    publish_event('payment_received', {
-                        'payment_id': payment.id,
-                        'cleaner_id': payment.cleaner.id,
-                        'client_id': payment.client.id,
-                        'client_name': payment.client.get_full_name() or payment.client.username,
-                        'job_id': job.id,
-                        'job_title': job.title or 'Cleaning Job',
-                        'amount': str(payment.amount),
-                    })
+                    publish_event(
+                        topic='payments',
+                        event_type='payment_received',
+                        data={
+                            'payment_id': payment.id,
+                            'cleaner_id': payment.cleaner.id,
+                            'client_id': payment.client.id,
+                            'client_name': f"{payment.client.first_name} {payment.client.last_name}".strip() or payment.client.username,
+                            'job_id': job.id,
+                            'job_title': job.services_description[:50] + '...' if len(job.services_description) > 50 else job.services_description,
+                            'amount': str(payment.amount),
+                        }
+                    )
                 
                 return Response({
                     'message': 'Payment confirmed successfully',

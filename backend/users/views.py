@@ -7,6 +7,9 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
+import logging
+
 from .serializers import UserRegistrationSerializer, UserSerializer, PasswordChangeSerializer, ServiceAreaSerializer
 from .models import ServiceArea
 from .location_utils import find_cleaners_by_location, find_cleaners_by_city, find_cleaners_by_postal_code
@@ -19,6 +22,8 @@ from .two_factor_auth import (
     verify_totp_code,
     generate_backup_codes
 )
+
+logger = logging.getLogger(__name__)
 
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
@@ -375,16 +380,40 @@ def resend_verification_email_view(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    # Send verification email
-    success = send_verification_email(user)
-    
-    if success:
-        return Response({
-            'message': 'Verification email sent successfully. Please check your inbox.'
-        }, status=status.HTTP_200_OK)
-    else:
+    # Send verification email with retry logic
+    try:
+        success = send_verification_email(user)
+        
+        if success:
+            return Response({
+                'message': 'Verification email sent successfully. Please check your inbox.'
+            }, status=status.HTTP_200_OK)
+        else:
+            # Email failed after retries
+            # In development, return the verification URL directly to the frontend
+            if settings.DEBUG:
+                # Build verification URL
+                frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+                verification_url = f"{frontend_url}/verify-email/{user.verification_token}"
+                
+                return Response({
+                    'message': 'Email service unavailable. Use the verification URL below.',
+                    'debug_mode': True,
+                    'verification_url': verification_url,
+                    'instructions': 'Copy the verification_url and paste it in your browser to verify your email.'
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {
+                        'error': 'Failed to send verification email. Please try again later.',
+                        'suggestion': 'If the problem persists, please contact support.'
+                    },
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                )
+    except Exception as e:
+        logger.error(f"Unexpected error in resend_verification_email_view: {e}", exc_info=True)
         return Response(
-            {'error': 'Failed to send verification email. Please try again later.'},
+            {'error': 'An unexpected error occurred. Please try again later.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

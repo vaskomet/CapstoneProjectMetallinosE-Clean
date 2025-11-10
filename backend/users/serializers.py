@@ -43,6 +43,7 @@ class UserSerializer(serializers.ModelSerializer):
             'verified_at',  # When cleaner was verified
             'service_areas_count',  # Count of service areas (for cleaners)
             'two_factor_enabled',  # Whether 2FA is enabled
+            'date_joined',  # When the user registered
         ]
         read_only_fields = [
             'email',
@@ -54,6 +55,7 @@ class UserSerializer(serializers.ModelSerializer):
             'email_verified_at',
             'is_verified_cleaner',
             'verified_at',
+            'date_joined',
         ]
     
     def get_is_oauth_user(self, obj):
@@ -65,6 +67,64 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role == 'cleaner':
             return obj.service_areas.count()
         return None
+    
+    def validate_first_name(self, value):
+        """Validate first name format."""
+        if value and len(value.strip()) > 0:
+            # Check minimum length
+            if len(value.strip()) < 2:
+                raise serializers.ValidationError("First name must be at least 2 characters long.")
+            # Check maximum length
+            if len(value) > 150:
+                raise serializers.ValidationError("First name cannot exceed 150 characters.")
+            # Check for invalid characters (allow letters, spaces, hyphens, apostrophes)
+            import re
+            if not re.match(r"^[a-zA-ZÀ-ÿ\s\-']+$", value):
+                raise serializers.ValidationError("First name can only contain letters, spaces, hyphens, and apostrophes.")
+        return value.strip() if value else value
+    
+    def validate_last_name(self, value):
+        """Validate last name format."""
+        if value and len(value.strip()) > 0:
+            # Check minimum length
+            if len(value.strip()) < 2:
+                raise serializers.ValidationError("Last name must be at least 2 characters long.")
+            # Check maximum length
+            if len(value) > 150:
+                raise serializers.ValidationError("Last name cannot exceed 150 characters.")
+            # Check for invalid characters (allow letters, spaces, hyphens, apostrophes)
+            import re
+            if not re.match(r"^[a-zA-ZÀ-ÿ\s\-']+$", value):
+                raise serializers.ValidationError("Last name can only contain letters, spaces, hyphens, and apostrophes.")
+        return value.strip() if value else value
+    
+    def validate_phone_number(self, value):
+        """Validate phone number format."""
+        if value:
+            # Remove any spaces or dashes
+            cleaned = value.replace(' ', '').replace('-', '')
+            # Check if it contains only digits
+            if not cleaned.isdigit():
+                raise serializers.ValidationError("Phone number can only contain digits.")
+            # Check length (will be checked with country code in validate method)
+            if len(cleaned) > 14:
+                raise serializers.ValidationError("Phone number cannot exceed 14 digits.")
+        return value
+    
+    def validate(self, attrs):
+        """Cross-field validation."""
+        # Validate phone number + country code length
+        phone_number = attrs.get('phone_number') or self.instance.phone_number if self.instance else ''
+        country_code = attrs.get('country_code') or self.instance.country_code if self.instance else ''
+        
+        if phone_number and country_code:
+            total_length = len(country_code) + len(phone_number.replace(' ', '').replace('-', ''))
+            if total_length > 14:
+                raise serializers.ValidationError({
+                    'phone_number': f"Phone number with country code cannot exceed 14 characters. Current: {total_length} characters."
+                })
+        
+        return attrs
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """

@@ -39,7 +39,7 @@ def _handle_message_created(message):
             
             for recipient in participants:
                 # Prepare message data
-                sender_name = message.sender.get_full_name() or message.sender.email
+                sender_name = f"{message.sender.first_name} {message.sender.last_name}".strip() or message.sender.email
                 
                 event_data = {
                     'message_id': message.id,
@@ -64,7 +64,7 @@ def _handle_message_created(message):
             participants = room.participants.exclude(id=message.sender.id)
             
             for recipient in participants:
-                sender_name = message.sender.get_full_name() or message.sender.email
+                sender_name = f"{message.sender.first_name} {message.sender.last_name}".strip() or message.sender.email
                 
                 event_data = {
                     'message_id': message.id,

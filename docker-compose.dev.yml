@@ -62,6 +62,13 @@ services:
       - REDIS_DB=0
       - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
       - ML_SERVICE_URL=http://ml-service:8001  # ML service endpoint for recommendations
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - DEFAULT_FROM_EMAIL=E-Clean <metvassilis@gmail.com>
+      - FRONTEND_URL=http://localhost:3000
     volumes:
       - ./backend:/app
       - media_files:/app/media
@@ -105,11 +112,11 @@ services:
     ports:
       - "8001:8001"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import requests; requests.get('http://localhost:8001/health')\""]
+      test: ["CMD-SHELL", "python -c \"import httpx; httpx.get('http://localhost:8001/health', timeout=5).raise_for_status()\""]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 40s
     restart: unless-stopped
     networks:
       - ecloud_network

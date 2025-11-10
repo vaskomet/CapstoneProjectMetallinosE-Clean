@@ -7,6 +7,7 @@ import { authAPI } from '../services/api';
  */
 export default function EmailVerificationBanner({ user, onVerificationSent }) {
   const [isResending, setIsResending] = useState(false);
+  const [verificationUrl, setVerificationUrl] = useState(null);
   const isResendingRef = useRef(false); // Prevent double-send during state update
 
   // Don't show banner if:
@@ -28,9 +29,18 @@ export default function EmailVerificationBanner({ user, onVerificationSent }) {
     setIsResending(true);
     
     try {
-      await authAPI.resendVerification();
-      if (onVerificationSent) {
-        onVerificationSent('Verification email sent! Check your inbox.');
+      const response = await authAPI.resendVerification();
+      
+      // Check if we got a debug mode response with verification URL
+      if (response.debug_mode && response.verification_url) {
+        setVerificationUrl(response.verification_url);
+        if (onVerificationSent) {
+          onVerificationSent('Email service unavailable. Verification link shown below.', 'warning');
+        }
+      } else {
+        if (onVerificationSent) {
+          onVerificationSent('Verification email sent! Check your inbox.');
+        }
       }
     } catch (error) {
       console.error('Failed to resend verification:', error);
@@ -54,6 +64,21 @@ export default function EmailVerificationBanner({ user, onVerificationSent }) {
     }
   };
 
+  const handleCopyUrl = () => {
+    if (verificationUrl) {
+      navigator.clipboard.writeText(verificationUrl);
+      if (onVerificationSent) {
+        onVerificationSent('Verification URL copied to clipboard!', 'success');
+      }
+    }
+  };
+
+  const handleOpenUrl = () => {
+    if (verificationUrl) {
+      window.location.href = verificationUrl;
+    }
+  };
+
   const roleSpecificMessage = user.role === 'client' 
     ? 'You cannot post jobs until you verify your email address.'
     : 'You cannot bid on jobs until you verify your email address.';
@@ -74,6 +99,46 @@ export default function EmailVerificationBanner({ user, onVerificationSent }) {
             <p>{roleSpecificMessage}</p>
             <p className="mt-1">Please check your inbox for a verification email from E-Clean.</p>
           </div>
+          
+          {/* Show verification URL if email service is down (development mode) */}
+          {verificationUrl && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-start">
+                <svg className="h-5 w-5 text-blue-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <div className="ml-3 flex-1">
+                  <p className="text-sm font-medium text-blue-800">
+                    Email service temporarily unavailable
+                  </p>
+                  <p className="mt-1 text-xs text-blue-700">
+                    Use this direct verification link instead:
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={handleOpenUrl}
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <svg className="-ml-0.5 mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Verify Email Now
+                    </button>
+                    <button
+                      onClick={handleCopyUrl}
+                      className="inline-flex items-center px-3 py-1.5 border border-blue-300 text-xs font-medium rounded text-blue-700 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      <svg className="-ml-0.5 mr-1.5 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy Link
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="mt-4">
             <button
               type="button"

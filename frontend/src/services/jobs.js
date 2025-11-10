@@ -18,6 +18,44 @@ import api from './core';
  */
 export const cleaningJobsAPI = {
   /**
+   * Get dashboard statistics for client
+   * @async
+   * @function getClientStats
+   * @returns {Promise<Object>} Client dashboard stats
+   */
+  getClientStats: async () => {
+    return apiCall(
+      async () => {
+        const response = await api.get('/jobs/dashboard/client-stats/');
+        return response.data;
+      },
+      {
+        loadingKey: 'client_stats',
+        showSuccess: false
+      }
+    );
+  },
+
+  /**
+   * Get dashboard statistics for cleaner
+   * @async
+   * @function getCleanerStats
+   * @returns {Promise<Object>} Cleaner dashboard stats
+   */
+  getCleanerStats: async () => {
+    return apiCall(
+      async () => {
+        const response = await api.get('/jobs/dashboard/cleaner-stats/');
+        return response.data;
+      },
+      {
+        loadingKey: 'cleaner_stats',
+        showSuccess: false
+      }
+    );
+  },
+
+  /**
    * Get all cleaning jobs with optional filtering
    * @async
    * @function getAll

@@ -77,13 +77,11 @@ class ChatRoom(models.Model):
         ]
     
     def __str__(self):
-        if self.job:
-            if self.bidder:
-                return f"Chat for Job #{self.job.id} with {self.bidder.username}"
-            return f"Chat for Job #{self.job.id}"
-        if self.room_type == 'direct':
-            participant_names = ', '.join([p.get_full_name() or p.username for p in self.participants.all()[:2]])
-            return f"DM: {participant_names}"
+        if self.room_type == 'job':
+            return f"Job Chat: Job #{self.job.id}" if self.job else "Job Chat (No Job)"
+        elif self.room_type == 'direct':
+            participant_names = ', '.join([f"{p.first_name} {p.last_name}".strip() or p.username for p in self.participants.all()[:2]])
+            return f"Direct Message: {participant_names or 'No participants'}"
         return f"{self.room_type.title()} Chat: {self.name}"
     
     @classmethod
