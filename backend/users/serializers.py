@@ -3,6 +3,7 @@ from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import MinLengthValidator
 from .models import User, ServiceArea
+from .phone_utils import validate_international_phone, clean_phone_number
 
 class UserSerializer(serializers.ModelSerializer):
     """
@@ -99,29 +100,42 @@ class UserSerializer(serializers.ModelSerializer):
         return value.strip() if value else value
     
     def validate_phone_number(self, value):
-        """Validate phone number format."""
+        """
+        Validate phone number format - basic cleaning only.
+        Full validation happens in validate() with country code.
+        """
         if value:
-            # Remove any spaces or dashes
-            cleaned = value.replace(' ', '').replace('-', '')
-            # Check if it contains only digits
+            # Clean the phone number (remove spaces, dashes, etc.)
+            cleaned = clean_phone_number(value)
+            # Basic check: should only contain digits after cleaning
             if not cleaned.isdigit():
-                raise serializers.ValidationError("Phone number can only contain digits.")
-            # Check length (will be checked with country code in validate method)
-            if len(cleaned) > 14:
-                raise serializers.ValidationError("Phone number cannot exceed 14 digits.")
+                raise serializers.ValidationError("Phone number can only contain digits, spaces, and dashes.")
+            return cleaned
         return value
     
     def validate(self, attrs):
-        """Cross-field validation."""
-        # Validate phone number + country code length
-        phone_number = attrs.get('phone_number') or self.instance.phone_number if self.instance else ''
-        country_code = attrs.get('country_code') or self.instance.country_code if self.instance else ''
+        """
+        Cross-field validation using phonenumbers library.
+        Validates phone number against country-specific rules.
+        """
+        # Get phone number and country code (from update or existing instance)
+        phone_number = attrs.get('phone_number')
+        country_code = attrs.get('country_code')
         
+        # If updating, get existing values for fields not being changed
+        if self.instance:
+            if phone_number is None:
+                phone_number = self.instance.phone_number
+            if country_code is None:
+                country_code = self.instance.country_code
+        
+        # Validate phone number with country code if both provided
         if phone_number and country_code:
-            total_length = len(country_code) + len(phone_number.replace(' ', '').replace('-', ''))
-            if total_length > 14:
+            is_valid, formatted, error = validate_international_phone(country_code, phone_number)
+            
+            if not is_valid:
                 raise serializers.ValidationError({
-                    'phone_number': f"Phone number with country code cannot exceed 14 characters. Current: {total_length} characters."
+                    'phone_number': error
                 })
         
         return attrs

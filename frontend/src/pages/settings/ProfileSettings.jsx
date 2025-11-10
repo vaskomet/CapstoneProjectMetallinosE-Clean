@@ -96,15 +96,9 @@ export default function ProfileSettings() {
           const cleaned = value.replace(/[\s\-]/g, '');
           if (!/^\d+$/.test(cleaned)) {
             newErrors.phone_number = 'Phone number can only contain digits.';
-          } else if (cleaned.length > 14) {
-            newErrors.phone_number = 'Phone number cannot exceed 14 digits.';
           } else {
-            const totalLength = (formData.country_code || '').length + cleaned.length;
-            if (totalLength > 14) {
-              newErrors.phone_number = `Phone number with country code cannot exceed 14 characters (currently ${totalLength}).`;
-            } else {
-              delete newErrors.phone_number;
-            }
+            // Backend will validate country-specific rules with phonenumbers library
+            delete newErrors.phone_number;
           }
         } else {
           delete newErrors.phone_number;
@@ -386,9 +380,11 @@ export default function ProfileSettings() {
               onPhoneChange={handlePhoneNumberChange}
               error={errors.phone_number}
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Total length: {(formData.country_code + formData.phone_number).length}/14 characters
-            </p>
+            {formData.phone_number && (
+              <p className="mt-1 text-xs text-gray-500">
+                Phone number length: {formData.phone_number.replace(/[\s\-]/g, '').length} digits
+              </p>
+            )}
           </div>
         </div>
 

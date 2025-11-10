@@ -37,3 +37,6 @@ httpx==0.27.*
 # torch will be installed from https://download.pytorch.org/whl/cpu
 numpy>=1.26.0,<2.0  # Compatible with Python 3.13
 scikit-learn>=1.3.0
+
+# Phone Number Validation
+phonenumbers==8.13.26  # Google's libphonenumber for international phone validation
