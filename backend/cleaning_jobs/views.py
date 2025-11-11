@@ -173,17 +173,94 @@ class CleaningJobListCreateView(generics.ListCreateAPIView):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         
-        # ========== SEARCH FUNCTIONALITY ==========
-        # Multi-field search across job description, property address, and notes
+        # ========== SEARCH FUNCTIONALITY (PostgreSQL Full-Text Search) ==========
+        # Advanced search with stemming, relevance ranking, and multi-language support
         search_query = self.request.query_params.get('search')
         if search_query:
-            from django.db.models import Q
-            queryset = queryset.filter(
-                Q(services_description__icontains=search_query) |
-                Q(property__address__icontains=search_query) |
-                Q(property__address_line1__icontains=search_query) |
-                Q(notes__icontains=search_query)
-            )
+            from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+            from django.db.models import Q, F
+            
+            # Check if search query is a postal code
+            # Greek format: "XXX XX" (6 chars with space) or "XXXXX" (5 digits)
+            # Remove spaces and check if it's 5 digits
+            postal_normalized = search_query.strip().replace(' ', '')
+            is_postal_code = postal_normalized.isdigit() and len(postal_normalized) == 5
+            
+            if is_postal_code:
+                # Postal code search - exact match (handles both formats)
+                # Match against normalized postal codes (without spaces)
+                queryset = queryset.filter(
+                    Q(property__postal_code=search_query.strip()) |  # Exact with space
+                    Q(property__postal_code=postal_normalized) |      # Without space
+                    Q(property__postal_code__icontains=postal_normalized)  # Partial match for autocomplete
+                )
+            else:
+                # Text search - use Full-Text Search with bilingual support
+                from django.contrib.postgres.search import SearchHeadline
+                
+                # Create search vectors for different fields with weights
+                # A = highest weight (job description), B = high (address fields), C = medium (notes)
+                search_vector = (
+                    SearchVector('services_description', weight='A', config='greek') +
+                    SearchVector('services_description', weight='A', config='english') +
+                    SearchVector('property__address_line1', weight='B', config='greek') +
+                    SearchVector('property__address_line1', weight='B', config='english') +
+                    SearchVector('property__city', weight='B', config='greek') +
+                    SearchVector('property__city', weight='B', config='english') +
+                    SearchVector('notes', weight='C', config='greek') +
+                    SearchVector('notes', weight='C', config='english')
+                )
+                
+                # Create search query (supports both Greek and English)
+                search_query_greek = SearchQuery(search_query, config='greek')
+                search_query_english = SearchQuery(search_query, config='english')
+                
+                # Combine searches with OR (find in either language)
+                combined_query = search_query_greek | search_query_english
+                
+                # Calculate relevance rank
+                rank = SearchRank(search_vector, combined_query)
+                
+                # Add search result highlighting using ts_headline
+                # This wraps matched terms in <b></b> tags for frontend highlighting
+                queryset = queryset.annotate(
+                    search=search_vector,
+                    rank=rank,
+                    highlighted_description=SearchHeadline(
+                        'services_description',
+                        combined_query,
+                        config='english',
+                        start_sel='<mark>',
+                        stop_sel='</mark>',
+                        max_words=50,
+                        min_words=15,
+                    ),
+                    highlighted_address=SearchHeadline(
+                        'property__address_line1',
+                        combined_query,
+                        config='english',
+                        start_sel='<mark>',
+                        stop_sel='</mark>',
+                        max_words=20,
+                        min_words=5,
+                    ),
+                    highlighted_city=SearchHeadline(
+                        'property__city',
+                        combined_query,
+                        config='english',
+                        start_sel='<mark>',
+                        stop_sel='</mark>',
+                    ),
+                    highlighted_notes=SearchHeadline(
+                        'notes',
+                        combined_query,
+                        config='english',
+                        start_sel='<mark>',
+                        stop_sel='</mark>',
+                        max_words=30,
+                        min_words=10,
+                    ),
+                ).filter(search=combined_query).order_by('-rank')
         
         # ========== PRICE RANGE FILTERING ==========
         # Filter by minimum and/or maximum client budget
@@ -730,3 +807,88 @@ def job_statistics(request):
     }
     
     return Response(stats)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search_autocomplete(request):
+    """
+    Autocomplete suggestions for job search.
+    
+    Returns unique suggestions from:
+    - Service descriptions
+    - Cities
+    - Postal codes
+    - Address terms
+    
+    Query params:
+        q: Search query (minimum 2 characters)
+        limit: Max suggestions per category (default: 5)
+    """
+    query = request.GET.get('q', '').strip()
+    limit = int(request.GET.get('limit', 5))
+    
+    if len(query) < 2:
+        return Response({
+            'descriptions': [],
+            'cities': [],
+            'postal_codes': [],
+            'addresses': []
+        })
+    
+    user = request.user
+    
+    # Role-based job filtering (same as main list view)
+    if hasattr(user, 'role') and user.role == 'admin':
+        jobs = CleaningJob.objects.all()
+    elif hasattr(user, 'role') and user.role == 'client':
+        jobs = CleaningJob.objects.filter(client=user)
+    elif hasattr(user, 'role') and user.role == 'cleaner':
+        # Cleaners see open_for_bids jobs and their own jobs
+        from django.db.models import Q
+        jobs = CleaningJob.objects.filter(
+            Q(status='open_for_bids') | Q(cleaner=user)
+        )
+    else:
+        jobs = CleaningJob.objects.none()
+    
+    # Check if query looks like a postal code (digits only)
+    postal_normalized = query.replace(' ', '')
+    is_postal_query = postal_normalized.isdigit()
+    
+    suggestions = {
+        'descriptions': [],
+        'cities': [],
+        'postal_codes': [],
+        'addresses': []
+    }
+    
+    if is_postal_query:
+        # For postal code queries, prioritize postal code suggestions
+        postal_codes = jobs.filter(
+            property__postal_code__icontains=postal_normalized
+        ).values_list('property__postal_code', flat=True).distinct()[:limit]
+        suggestions['postal_codes'] = list(postal_codes)
+    else:
+        # Text search - get suggestions from multiple fields
+        from django.db.models import Q
+        
+        # Service descriptions (common search terms)
+        descriptions = jobs.filter(
+            services_description__icontains=query
+        ).values_list('services_description', flat=True).distinct()[:limit]
+        suggestions['descriptions'] = list(descriptions)
+        
+        # Cities
+        cities = jobs.filter(
+            property__city__icontains=query
+        ).values_list('property__city', flat=True).distinct()[:limit]
+        suggestions['cities'] = list(set(cities))  # Remove duplicates
+        
+        # Addresses
+        addresses = jobs.filter(
+            property__address_line1__icontains=query
+        ).values_list('property__address_line1', flat=True).distinct()[:limit]
+        suggestions['addresses'] = list(addresses)
+    
+    return Response(suggestions)

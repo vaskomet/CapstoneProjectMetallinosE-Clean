@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',  # Required by django-allauth
+    'django.contrib.postgres',  # PostgreSQL-specific features (full-text search)
     # 'django.contrib.gis',  # Temporarily disabled - will be re-enabled with PostGIS setup
     'rest_framework',
     'corsheaders',

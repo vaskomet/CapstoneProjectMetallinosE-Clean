@@ -1,7 +1,8 @@
 import React from 'react';
+import HighlightedText from './HighlightedText';
 
 /**
- * JobListItem Component - Compact list view for cleaning job
+ * JobListItem Component - Compact list view for cleaning job with search highlighting
  * 
  * Displays job information in a row format suitable for list view:
  * - Status indicator
@@ -60,10 +61,16 @@ const JobListItem = ({ job, onViewDetails, onBid, userRole }) => {
               {/* Title */}
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-semibold text-gray-900 truncate">
-                  {job.services_description || 'Cleaning Service'}
+                  <HighlightedText 
+                    highlighted={job.highlighted_description}
+                    fallback={job.services_description || 'Cleaning Service'}
+                  />
                 </h4>
                 <p className="text-xs text-gray-500 truncate">
-                  {address}
+                  <HighlightedText 
+                    highlighted={job.highlighted_city || job.highlighted_address}
+                    fallback={address}
+                  />
                 </p>
               </div>
 

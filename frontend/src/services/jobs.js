@@ -180,6 +180,30 @@ export const cleaningJobsAPI = {
       }
     );
   },
+
+  /**
+   * Get search autocomplete suggestions
+   * @async
+   * @function autocomplete
+   * @param {string} query - Search query (minimum 2 characters)
+   * @param {number} [limit=5] - Maximum suggestions per category
+   * @returns {Promise<Object>} Autocomplete suggestions by category
+   */
+  autocomplete: async (query, limit = 5) => {
+    return apiCall(
+      async () => {
+        const response = await api.get('/jobs/autocomplete/', {
+          params: { q: query, limit }
+        });
+        return response.data;
+      },
+      {
+        loadingKey: 'autocomplete',
+        showSuccess: false,
+        showError: false, // Don't show error toast for autocomplete
+      }
+    );
+  },
 };
 
 /**

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
+import SearchAutocomplete from './SearchAutocomplete';
 
 /**
- * SearchFilterBar Component - Advanced search and filtering for jobs
+ * SearchFilterBar Component - Advanced search and filtering for jobs with autocomplete
  * 
  * Provides UI for Phase 2 API features:
  * - Search across job descriptions, addresses, notes
@@ -13,9 +14,40 @@ import React, { useState } from 'react';
  * @param {Function} onFilterChange - Callback when filters change
  * @param {Function} onReset - Callback to reset all filters
  * @param {Boolean} isExpanded - Whether filters are expanded (default: false)
+ * @param {String} userRole - User role (client/cleaner) for role-specific filters
  */
-const SearchFilterBar = ({ filters = {}, onFilterChange, onReset, isExpanded = false }) => {
+const SearchFilterBar = ({ filters = {}, onFilterChange, onReset, isExpanded = false, userRole }) => {
   const [showAdvanced, setShowAdvanced] = useState(isExpanded);
+
+  // Status options based on user role
+  const statusOptions = userRole === 'cleaner' 
+    ? [
+        { value: '', label: 'All Statuses' },
+        { value: 'open_for_bids', label: 'Open for Bids' },
+        { value: 'bid_accepted', label: 'Bid Accepted (Awaiting Payment)' },
+        { value: 'confirmed', label: 'Confirmed (Paid)' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'completed', label: 'Completed' },
+      ]
+    : userRole === 'client'
+    ? [
+        { value: '', label: 'All Statuses' },
+        { value: 'open_for_bids', label: 'Open for Bids' },
+        { value: 'bid_accepted', label: 'Bid Accepted (Pending Payment)' },
+        { value: 'confirmed', label: 'Confirmed' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'completed', label: 'Completed' },
+        { value: 'cancelled', label: 'Cancelled' },
+      ]
+    : [
+        { value: '', label: 'All Statuses' },
+        { value: 'open_for_bids', label: 'Open for Bids' },
+        { value: 'bid_accepted', label: 'Bid Accepted' },
+        { value: 'confirmed', label: 'Confirmed' },
+        { value: 'in_progress', label: 'In Progress' },
+        { value: 'completed', label: 'Completed' },
+        { value: 'cancelled', label: 'Cancelled' },
+      ];
 
   // Handle filter changes
   const handleChange = (key, value) => {
@@ -35,19 +67,12 @@ const SearchFilterBar = ({ filters = {}, onFilterChange, onReset, isExpanded = f
     <div className="bg-white rounded-lg shadow-md p-4 mb-6">
       {/* Search Input Row */}
       <div className="flex gap-3 items-center">
-        {/* Main Search */}
-        <div className="flex-1 relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-          <input
-            type="text"
-            placeholder="Search jobs by description, location..."
+        {/* Main Search with Autocomplete */}
+        <div className="flex-1">
+          <SearchAutocomplete
             value={filters.search || ''}
-            onChange={(e) => handleChange('search', e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            onChange={(suggestion) => handleChange('search', suggestion)}
+            onInputChange={(value) => handleChange('search', value)}
           />
         </div>
 
@@ -147,20 +172,18 @@ const SearchFilterBar = ({ filters = {}, onFilterChange, onReset, isExpanded = f
             {/* Status Filter */}
             <div className="md:col-span-2 lg:col-span-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Job Status
+                Job Status {userRole && <span className="text-xs text-gray-500">({userRole} view)</span>}
               </label>
               <select
                 value={filters.status || ''}
                 onChange={(e) => handleChange('status', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                <option value="">All Statuses</option>
-                <option value="open_for_bids">Open for Bids</option>
-                <option value="bid_accepted">Bid Accepted</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
+                {statusOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

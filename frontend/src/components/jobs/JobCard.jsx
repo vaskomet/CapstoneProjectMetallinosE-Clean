@@ -1,4 +1,6 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import HighlightedText from './HighlightedText';
 
 /**
  * Simple time ago helper (replaces date-fns)
@@ -24,19 +26,8 @@ const timeAgo = (date) => {
 };
 
 /**
- * JobCard Component - Card view for individual cleaning job
- * 
- * Displays job information in an attractive card format with:
- * - Job title, description, and location
- * - Client budget and bid statistics
- * - Job status with color coding
- * - Number of bids received
- * - Quick action buttons
- * 
- * @param {Object} job - Job object from API
- * @param {Function} onViewDetails - Callback when clicking "View Details"
- * @param {Function} onBid - Callback when clicking "Place Bid" (cleaners only)
- * @param {String} userRole - Current user's role (client/cleaner)
+ * JobCard Component - Displays a job in card format with search highlighting
+ * Used in card view mode on the Jobs Pool page
  */
 const JobCard = ({ job, onViewDetails, onBid, userRole }) => {
   // Status color mapping
@@ -80,7 +71,10 @@ const JobCard = ({ job, onViewDetails, onBid, userRole }) => {
 
         {/* Job Title */}
         <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-1">
-          {job.services_description || 'Cleaning Service'}
+          <HighlightedText 
+            highlighted={job.highlighted_description}
+            fallback={job.services_description || 'Cleaning Service'}
+          />
         </h3>
 
         {/* Location */}
@@ -89,7 +83,12 @@ const JobCard = ({ job, onViewDetails, onBid, userRole }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          <span className="line-clamp-1">{address}</span>
+          <span className="line-clamp-1">
+            <HighlightedText 
+              highlighted={job.highlighted_city || job.highlighted_address}
+              fallback={address}
+            />
+          </span>
         </div>
 
         {/* Scheduled Date */}

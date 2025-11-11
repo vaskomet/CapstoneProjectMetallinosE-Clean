@@ -22,6 +22,10 @@ class UserSerializer(serializers.ModelSerializer):
     service_areas_count = serializers.SerializerMethodField()
     # Add 2FA status
     two_factor_enabled = serializers.BooleanField(read_only=True)
+    # Add cleaner statistics for bid comparison
+    rating = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
+    jobs_completed = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -43,6 +47,9 @@ class UserSerializer(serializers.ModelSerializer):
             'is_verified_cleaner',  # Admin-verified cleaner badge
             'verified_at',  # When cleaner was verified
             'service_areas_count',  # Count of service areas (for cleaners)
+            'rating',  # Average rating from reviews (for cleaners)
+            'reviews_count',  # Total number of reviews (for cleaners)
+            'jobs_completed',  # Total completed jobs (for cleaners)
             'two_factor_enabled',  # Whether 2FA is enabled
             'date_joined',  # When the user registered
         ]
@@ -68,6 +75,50 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.role == 'cleaner':
             return obj.service_areas.count()
         return None
+    
+    def get_rating(self, obj):
+        """Get average rating from reviews (for cleaners)."""
+        if obj.role != 'cleaner':
+            return None
+        
+        try:
+            from django.db.models import Avg
+            from reviews.models import Review
+            
+            avg_rating = Review.objects.filter(reviewee=obj).aggregate(
+                avg=Avg('overall_rating')
+            )['avg']
+            
+            return round(avg_rating, 1) if avg_rating else None
+        except ImportError:
+            # Reviews app not available
+            return None
+    
+    def get_reviews_count(self, obj):
+        """Get total number of reviews (for cleaners)."""
+        if obj.role != 'cleaner':
+            return None
+        
+        try:
+            from reviews.models import Review
+            return Review.objects.filter(reviewee=obj).count()
+        except ImportError:
+            # Reviews app not available
+            return 0
+    
+    def get_jobs_completed(self, obj):
+        """Get total completed jobs (for cleaners)."""
+        if obj.role != 'cleaner':
+            return None
+        
+        try:
+            from cleaning_jobs.models import CleaningJob
+            return CleaningJob.objects.filter(
+                cleaner=obj,
+                status='completed'
+            ).count()
+        except ImportError:
+            return 0
     
     def validate_first_name(self, value):
         """Validate first name format."""

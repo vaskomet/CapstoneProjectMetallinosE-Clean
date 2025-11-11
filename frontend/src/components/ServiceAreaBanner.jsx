@@ -32,7 +32,7 @@ export default function ServiceAreaBanner({ user }) {
           <div className="mt-4">
             <button
               type="button"
-              onClick={() => navigate('/settings/profile')}
+              onClick={() => navigate('/settings/service-areas')}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-800 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
             >
               <svg className="-ml-1 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

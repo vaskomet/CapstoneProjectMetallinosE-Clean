@@ -148,6 +148,12 @@ class CleaningJobSerializer(serializers.ModelSerializer):
     # Bid statistics (count, average, min, max)
     bid_stats = serializers.SerializerMethodField()
     
+    # Search result highlighting (only populated when search is active)
+    highlighted_description = serializers.SerializerMethodField()
+    highlighted_address = serializers.SerializerMethodField()
+    highlighted_city = serializers.SerializerMethodField()
+    highlighted_notes = serializers.SerializerMethodField()
+    
     # Eco-impact metrics managed by views or Celery tasks
     eco_impact_metrics = serializers.JSONField(read_only=True)
 
@@ -175,6 +181,10 @@ class CleaningJobSerializer(serializers.ModelSerializer):
             'after_photos',
             'payment_info',
             'bid_stats',
+            'highlighted_description',
+            'highlighted_address',
+            'highlighted_city',
+            'highlighted_notes',
             'cleaner_confirmed_at',
             'client_review',
             'client_rating',
@@ -269,6 +279,22 @@ class CleaningJobSerializer(serializers.ModelSerializer):
             'lowest': float(stats['lowest_bid']) if stats['lowest_bid'] else None,
             'highest': float(stats['highest_bid']) if stats['highest_bid'] else None,
         }
+    
+    def get_highlighted_description(self, obj):
+        """Get highlighted search results for services_description field"""
+        return getattr(obj, 'highlighted_description', None)
+    
+    def get_highlighted_address(self, obj):
+        """Get highlighted search results for address field"""
+        return getattr(obj, 'highlighted_address', None)
+    
+    def get_highlighted_city(self, obj):
+        """Get highlighted search results for city field"""
+        return getattr(obj, 'highlighted_city', None)
+    
+    def get_highlighted_notes(self, obj):
+        """Get highlighted search results for notes field"""
+        return getattr(obj, 'highlighted_notes', None)
 
 
 class CleaningJobCreateSerializer(serializers.ModelSerializer):

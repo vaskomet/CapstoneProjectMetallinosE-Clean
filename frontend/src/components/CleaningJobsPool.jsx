@@ -15,6 +15,7 @@ import JobCard from './jobs/JobCard';
 import JobListItem from './jobs/JobListItem';
 import SearchFilterBar from './jobs/SearchFilterBar';
 import EmptyState from './jobs/EmptyState';
+import BidComparisonTable from './jobs/BidComparisonTable';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -168,6 +169,10 @@ const CleaningJobsPool = () => {
   const [searchTerm, setSearchTerm] = useState(''); // Search query
   const [priceRange, setPriceRange] = useState({ min: '', max: '' }); // Price filters
   const [dateRange, setDateRange] = useState({ from: '', to: '' }); // Date filters
+  const [statusFilter, setStatusFilter] = useState(''); // Status filter
+
+  // Bid comparison view state (Phase 5: Bid Comparison)
+  const [showBidComparison, setShowBidComparison] = useState(false); // Toggle between list and comparison table view
 
   // Ref to prevent multiple simultaneous fetch calls
   const fetchingRef = useRef(false);
@@ -195,12 +200,34 @@ const CleaningJobsPool = () => {
     try {
       // Build query parameters for cleaners based on location filter
       const params = {};
+      
+      // Location filtering (cleaners only)
       if (user?.role === 'cleaner' && locationFilter.type !== 'all') {
         if (locationFilter.type === 'myAreas' && locationFilter.areaId) {
           params.service_area_id = locationFilter.areaId;
         } else if (locationFilter.type === 'distance') {
           params.distance_km = locationFilter.distance;
         }
+      }
+
+      // Search and filter parameters (Phase 2 integration)
+      if (searchTerm) {
+        params.search = searchTerm;
+      }
+      if (priceRange.min) {
+        params.price_min = priceRange.min;
+      }
+      if (priceRange.max) {
+        params.price_max = priceRange.max;
+      }
+      if (dateRange.from) {
+        params.date_from = dateRange.from;
+      }
+      if (dateRange.to) {
+        params.date_to = dateRange.to;
+      }
+      if (statusFilter) {
+        params.status = statusFilter;
       }
 
       const response = await cleaningJobsAPI.getAll(params);
@@ -256,6 +283,17 @@ const CleaningJobsPool = () => {
       fetchProperties();
     }
   }, [isAuthenticated, user?.role]);
+
+  // Re-fetch jobs when filters change (Phase 4: Search/Filter integration)
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      const debounceTimer = setTimeout(() => {
+        fetchJobs();
+      }, 500); // Debounce to avoid too many API calls while typing
+
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [searchTerm, priceRange.min, priceRange.max, dateRange.from, dateRange.to, statusFilter, locationFilter]);
 
   // Handle pre-selected job from navigation state (e.g., from cleaner profile)
   useEffect(() => {
@@ -862,17 +900,21 @@ const CleaningJobsPool = () => {
             priceMax: priceRange.max,
             dateFrom: dateRange.from,
             dateTo: dateRange.to,
+            status: statusFilter,
           }}
           onFilterChange={(newFilters) => {
             setSearchTerm(newFilters.search || '');
             setPriceRange({ min: newFilters.priceMin || '', max: newFilters.priceMax || '' });
             setDateRange({ from: newFilters.dateFrom || '', to: newFilters.dateTo || '' });
+            setStatusFilter(newFilters.status || '');
           }}
           onReset={() => {
             setSearchTerm('');
             setPriceRange({ min: '', max: '' });
             setDateRange({ from: '', to: '' });
+            setStatusFilter('');
           }}
+          userRole={user?.role}
         />
 
         {/* View Mode Toggle (Phase 4) */}
@@ -1043,8 +1085,14 @@ const CleaningJobsPool = () => {
 
       {/* Job Creation Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Book Cleaning Service</h2>
@@ -1243,8 +1291,14 @@ const CleaningJobsPool = () => {
 
       {/* Job Details Modal */}
       {showJobModal && selectedJob && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowJobModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Job Details</h2>
@@ -1396,67 +1450,113 @@ const CleaningJobsPool = () => {
                 {/* Show current bids */}
                 {selectedJob.bids && selectedJob.bids.length > 0 && (
                   <div>
-                    <h3 className="font-medium text-gray-700 mb-2">Current Bids ({selectedJob.bids.length})</h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {selectedJob.bids.map((bid) => (
-                        <div key={bid.id} className={`p-3 border rounded-lg ${
-                          bid.status === 'accepted' ? 'border-green-300 bg-green-50' : 'border-gray-200'
-                        }`}>
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-900">${bid.bid_amount}</p>
-                              <p className="text-sm text-gray-600">
-                                {bid.cleaner?.first_name || bid.cleaner?.username || 'Unknown'} • {bid.estimated_duration} min
-                              </p>
-                              {bid.message && (
-                                <p className="text-sm text-gray-700 mt-1">{bid.message}</p>
-                              )}
-                            </div>
-                            <div className="flex space-x-2">
-                              {/* Chat button - Available for both client and the bidder */}
-                              {(user?.role === 'client' || (user?.role === 'cleaner' && bid.cleaner?.id === user.id)) && (
-                                <button
-                                  onClick={() => {
-                                    navigate(`/jobs/${selectedJob.id}/chat?bidder=${bid.cleaner.id}`);
-                                    setShowJobModal(false);
-                                  }}
-                                  className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
-                                  title={user?.role === 'client' ? `Chat with ${bid.cleaner?.username}` : 'Chat with client'}
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                  </svg>
-                                  <span>Chat</span>
-                                </button>
-                              )}
-                              
-                              {/* Accept & Pay button - Only for client on open jobs */}
-                              {user?.role === 'client' && selectedJob.status === 'open_for_bids' && bid.status === 'pending' && (
-                                <button
-                                  onClick={() => handleAcceptBid(bid.id, bid)}
-                                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                                >
-                                  Accept & Pay
-                                </button>
-                              )}
-                              
-                              {/* Withdraw button - Only for cleaner's own bids */}
-                              {user?.role === 'cleaner' && bid.cleaner?.id === user.id && bid.status === 'pending' && (
-                                <button
-                                  onClick={() => handleWithdrawBid(bid.id)}
-                                  className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                                >
-                                  Withdraw
-                                </button>
-                              )}
-                              {bid.status === 'accepted' && (
-                                <span className="text-green-600 text-sm font-medium">Accepted</span>
-                              )}
+                    {/* Header with view toggle for clients */}
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-medium text-gray-700">
+                        Current Bids ({selectedJob.bids.length})
+                      </h3>
+                      {user?.role === 'client' && selectedJob.bids.length > 1 && (
+                        <button
+                          onClick={() => setShowBidComparison(!showBidComparison)}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                        >
+                          {showBidComparison ? (
+                            <>
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                              </svg>
+                              List View
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                              Compare Bids
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Bid Comparison Table (Phase 5) */}
+                    {showBidComparison && user?.role === 'client' ? (
+                      <BidComparisonTable
+                        bids={selectedJob.bids}
+                        onAcceptBid={(bidId) => {
+                          const bid = selectedJob.bids.find(b => b.id === bidId);
+                          handleAcceptBid(bidId, bid);
+                        }}
+                        onRejectBid={(bidId) => {
+                          // TODO: Implement reject bid functionality
+                          toast.info('Reject bid functionality coming soon!');
+                        }}
+                        jobBudget={selectedJob.client_budget}
+                        disabled={selectedJob.status !== 'open_for_bids'}
+                      />
+                    ) : (
+                      /* Original list view */
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {selectedJob.bids.map((bid) => (
+                          <div key={bid.id} className={`p-3 border rounded-lg ${
+                            bid.status === 'accepted' ? 'border-green-300 bg-green-50' : 'border-gray-200'
+                          }`}>
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900">${bid.bid_amount}</p>
+                                <p className="text-sm text-gray-600">
+                                  {bid.cleaner?.first_name || bid.cleaner?.username || 'Unknown'} • {bid.estimated_duration} min
+                                </p>
+                                {bid.message && (
+                                  <p className="text-sm text-gray-700 mt-1">{bid.message}</p>
+                                )}
+                              </div>
+                              <div className="flex space-x-2">
+                                {/* Chat button - Available for both client and the bidder */}
+                                {(user?.role === 'client' || (user?.role === 'cleaner' && bid.cleaner?.id === user.id)) && (
+                                  <button
+                                    onClick={() => {
+                                      navigate(`/jobs/${selectedJob.id}/chat?bidder=${bid.cleaner.id}`);
+                                      setShowJobModal(false);
+                                    }}
+                                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
+                                    title={user?.role === 'client' ? `Chat with ${bid.cleaner?.username}` : 'Chat with client'}
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                    <span>Chat</span>
+                                  </button>
+                                )}
+                                
+                                {/* Accept & Pay button - Only for client on open jobs */}
+                                {user?.role === 'client' && selectedJob.status === 'open_for_bids' && bid.status === 'pending' && (
+                                  <button
+                                    onClick={() => handleAcceptBid(bid.id, bid)}
+                                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                  >
+                                    Accept & Pay
+                                  </button>
+                                )}
+                                
+                                {/* Withdraw button - Only for cleaner's own bids */}
+                                {user?.role === 'cleaner' && bid.cleaner?.id === user.id && bid.status === 'pending' && (
+                                  <button
+                                    onClick={() => handleWithdrawBid(bid.id)}
+                                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                                  >
+                                    Withdraw
+                                  </button>
+                                )}
+                                {bid.status === 'accepted' && (
+                                  <span className="text-green-600 text-sm font-medium">Accepted</span>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1553,8 +1653,14 @@ const CleaningJobsPool = () => {
 
       {/* Bid Submission Modal */}
       {showBidModal && selectedJob && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowBidModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg shadow-xl max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">Submit Bid</h2>
