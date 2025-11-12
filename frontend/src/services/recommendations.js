@@ -1,14 +1,10 @@
 /**
- * ML-Powered Recommendations API
+ * Recommendations API
  * 
- * Provides endpoints for ML-based cleaner and job recommendations.
- * Integrates with FastAPI ML microservice via Django backend.
+ * Provides endpoints for algorithmic cleaner recommendations.
  * 
  * Features:
- * - Cleaner recommendations for locations
- * - Job recommendations for cleaners
- * - Bid price suggestions
- * - ML service health checks
+ * - Cleaner recommendations for locations based on ratings, experience, and completion rate
  * 
  * @module services/recommendations
  */
@@ -20,7 +16,7 @@ import { api, apiCall } from './core';
  */
 export const recommendationsAPI = {
   /**
-   * Get ML-powered cleaner recommendations for a location
+   * Get cleaner recommendations for a location
    * 
    * @param {Object} params - Search parameters
    * @param {number} params.latitude - Job location latitude (required)
@@ -51,8 +47,8 @@ export const recommendationsAPI = {
    * //       stats: {...}
    * //     }
    * //   ],
-   * //   ml_enabled: true,
-   * //   fallback_mode: false
+   * //   ml_enabled: false,
+   * //   fallback_mode: true
    * // }
    */
   getCleanersForLocation: async (params) => {
@@ -66,38 +62,6 @@ export const recommendationsAPI = {
         showSuccess: false,
         showErrors: true,
         retries: 2
-      }
-    );
-  },
-
-  /**
-   * Check ML service health and availability
-   * 
-   * @returns {Promise<Object>} Service status
-   * @example
-   * const status = await recommendationsAPI.getMLStatus();
-   * // Returns:
-   * // {
-   * //   available: true,
-   * //   service_url: "http://ml-service:8001",
-   * //   model_info: {
-   * //     version: "1.0",
-   * //     num_clients: 507,
-   * //     num_cleaners: 211
-   * //   }
-   * // }
-   */
-  getMLStatus: async () => {
-    return apiCall(
-      async () => {
-        const response = await api.get('/recommendations/ml-status/');
-        return response.data;
-      },
-      {
-        loadingKey: 'ml_status',
-        showSuccess: false,
-        showErrors: false,
-        retries: 0
       }
     );
   },

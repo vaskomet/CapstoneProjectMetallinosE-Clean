@@ -46,7 +46,7 @@ const CleanerSearch = ({
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [mlEnabled, setMlEnabled] = useState(false);
+  const [rankingEnabled, setRankingEnabled] = useState(false); // Algorithm-based ranking
   const [recommendationScores, setRecommendationScores] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [resultsPerPage] = useState(10); // Show 10 cleaners per page
@@ -216,37 +216,37 @@ const CleanerSearch = ({
       if (cleaners.length === 0) {
         setSearchResults([]);
         setRecommendationScores({});
-        setMlEnabled(false);
+        setRankingEnabled(false);
         setCurrentPage(1); // Reset to first page
         toast.info('No cleaners service this location yet. They may be expanding their areas soon!');
         setIsSearching(false);
         return;
       }
       
-      // Step 2: Get ML recommendations for ranking
+      // Step 2: Get algorithm recommendations for ranking
       try {
-        const mlParams = {
+        const recommendParams = {
           latitude: params.latitude,
           longitude: params.longitude,
           max_radius: params.max_radius,
           top_k: cleaners.length // Request stats for ALL cleaners found
         };
 
-        // Add property context if available (enables true ML predictions)
+        // Add property context if available
         if (params.property_id) {
-          mlParams.property_id = params.property_id;
+          recommendParams.property_id = params.property_id;
         } else {
           // Fallback: use property type from selected property or default
-          mlParams.property_type = selectedProperty?.property_type || 'apartment';
+          recommendParams.property_type = selectedProperty?.property_type || 'apartment';
         }
 
-        const mlResponse = await recommendationsAPI.getCleanersForLocation(mlParams);
+        const response = await recommendationsAPI.getCleanersForLocation(recommendParams);
         
-        console.log('ML Response sample:', mlResponse.recommendations[0]); // DEBUG
+        console.log('Algorithm Response sample:', response.recommendations[0]); // DEBUG
         
         // Build score lookup map with FULL recommendation data
         const scores = {};
-        mlResponse.recommendations.forEach(rec => {
+        response.recommendations.forEach(rec => {
           scores[rec.cleaner.id] = {
             score: rec.score,
             stats: rec.stats,
@@ -260,9 +260,9 @@ const CleanerSearch = ({
         });
         
         setRecommendationScores(scores);
-        setMlEnabled(mlResponse.ml_enabled);
+        setRankingEnabled(true); // Algorithm ranking is active
         
-        // Sort cleaners by ML score (highest first)
+        // Sort cleaners by algorithm score (highest first)
         const sortedCleaners = cleaners.sort((a, b) => {
           const scoreA = scores[a.id]?.score || 0;
           const scoreB = scores[b.id]?.score || 0;
@@ -272,17 +272,13 @@ const CleanerSearch = ({
         setSearchResults(sortedCleaners);
         setCurrentPage(1); // Reset to first page on new search
         
-        if (mlResponse.ml_enabled && !mlResponse.fallback_mode) {
-          toast.success(`Found ${cleaners.length} cleaner${cleaners.length > 1 ? 's' : ''} - ML-ranked by match quality!`);
-        } else {
-          toast.success(`Found ${cleaners.length} cleaner${cleaners.length > 1 ? 's' : ''} in your area!`);
-        }
+        toast.success(`Found ${cleaners.length} cleaner${cleaners.length > 1 ? 's' : ''} - Ranked by match quality!`);
         
-      } catch (mlError) {
-        // ML service failed, use location results only
-        console.warn('ML recommendations unavailable, using distance-based sorting:', mlError);
+      } catch (error) {
+        // Algorithm failed, use location results only
+        console.warn('Recommendation algorithm unavailable, using distance-based sorting:', error);
         setRecommendationScores({});
-        setMlEnabled(false);
+        setRankingEnabled(false);
         setSearchResults(cleaners);
         setCurrentPage(1); // Reset to first page
         toast.success(`Found ${cleaners.length} cleaner${cleaners.length > 1 ? 's' : ''} in your area!`);
@@ -490,7 +486,7 @@ const CleanerSearch = ({
               <h3 className="text-lg font-semibold text-gray-900">
                 Search Results ({filteredResults.length} total{filteredResults.length > resultsPerPage ? ` - Page ${currentPage} of ${totalPages}` : ''})
               </h3>
-              {mlEnabled && (
+              {rankingEnabled && (
                 <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1.5 rounded-full">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -553,7 +549,7 @@ const CleanerSearch = ({
                 const rec = recData || {};  // Full recommendation data including history
                 // Calculate actual index in full results for "Top 3" determination
                 const actualIndex = indexOfFirstResult + index;
-                const isTopRecommendation = mlEnabled && actualIndex < 3; // Top 3 overall are "highly recommended"
+                const isTopRecommendation = rankingEnabled && actualIndex < 3; // Top 3 overall are "highly recommended"
                 
                 return (
                   <div
@@ -698,8 +694,8 @@ const CleanerSearch = ({
                           </div>
                         )}
 
-                        {/* Score Breakdown (if ML scoring is active) */}
-                        {mlEnabled && stats && mlScore && (
+                        {/* Score Breakdown (if ranking is active) */}
+                        {rankingEnabled && stats && mlScore && (
                           <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Quality Score Breakdown</span>

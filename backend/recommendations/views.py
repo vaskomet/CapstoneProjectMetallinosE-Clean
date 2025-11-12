@@ -1,8 +1,7 @@
 """
 Recommendation System API Views
 
-Provides REST endpoints for ML-powered cleaner and job recommendations.
-Integrates with FastAPI ML microservice via MLServiceClient.
+Provides REST endpoints for cleaner recommendations using algorithmic scoring.
 """
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -16,7 +15,6 @@ from users.serializers import UserSerializer
 from users.location_utils import find_cleaners_by_location
 from cleaning_jobs.models import CleaningJob
 from properties.models import Property
-from .services.ml_client import get_ml_client, MLServiceError
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -197,12 +195,6 @@ def recommend_cleaners_for_location(request):
                 logger.info(f'Client history boost: Cleaner {cleaner.id} has cleaned {previous_jobs_count} of client\'s properties. Score: {original_score:.2f} → {boosted_score:.2f}')
     
     
-    try:
-        # Still check ML service health for monitoring
-        ml_client = get_ml_client()
-    except MLServiceError as e:
-        logger.warning(f'ML service unavailable (not used for location search): {e}')
-    
     # Step 4: Build response with enriched cleaner data
     recommendations = []
     for cleaner in eligible_cleaners:
@@ -381,35 +373,3 @@ def _get_cleaner_stats(cleaner):
         'total_jobs': total_jobs,
         'completion_rate': round(completion_rate, 2)
     }
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def ml_service_status(request):
-    """
-    Check ML service health and availability.
-    
-    Returns:
-        {
-            "available": true,
-            "service_url": "http://ml-service:8001",
-            "model_info": {...}
-        }
-    """
-    ml_client = get_ml_client()
-    
-    try:
-        # Try to get model info
-        info = ml_client.get_model_info()
-        
-        return Response({
-            'available': True,
-            'service_url': ml_client.base_url,
-            'model_info': info
-        })
-    except MLServiceError as e:
-        return Response({
-            'available': False,
-            'service_url': ml_client.base_url,
-            'error': str(e)
-        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)

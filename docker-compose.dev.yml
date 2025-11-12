@@ -61,7 +61,6 @@ services:
       - REDIS_PASSWORD=redis_dev_password
       - REDIS_DB=0
       - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
-      - ML_SERVICE_URL=http://ml-service:8001  # ML service endpoint for recommendations
       - EMAIL_HOST=smtp.sendgrid.net
       - EMAIL_PORT=587
       - EMAIL_USE_TLS=True
@@ -73,15 +72,12 @@ services:
       - ./backend:/app
       - media_files:/app/media
       - static_files:/app/staticfiles
-      - ml_models:/app/recommendations/models  # Persist trained ML models across container restarts
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      ml-service:
         condition: service_healthy
     command: >
       sh -c "
@@ -95,29 +91,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - ecloud_network
-
-  # ML Service - Recommendation Engine
-  ml-service:
-    build:
-      context: ./ml-service
-      dockerfile: Dockerfile
-    container_name: ecloud_ml_service_dev
-    environment:
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - ./ml-service:/app
-      - ml_models:/app/models  # Shared volume with backend for model files
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import httpx; httpx.get('http://localhost:8001/health', timeout=5).raise_for_status()\""]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
     networks:
       - ecloud_network
 
@@ -140,7 +113,6 @@ services:
       - REDIS_PASSWORD=redis_dev_password
       - REDIS_DB=0
       - DJANGO_SETTINGS_MODULE=e_clean_backend.settings
-      - ML_SERVICE_URL=http://ml-service:8001  # ML service endpoint
     volumes:
       - ./backend:/app
     depends_on:
@@ -149,8 +121,6 @@ services:
       redis:
         condition: service_healthy
       backend:
-        condition: service_healthy
-      ml-service:
         condition: service_healthy
     command: python manage.py run_event_subscriber --verbosity 2
     restart: unless-stopped
@@ -183,7 +153,6 @@ volumes:
   redis_data:
   media_files:
   static_files:
-  ml_models:  # Persist trained neural network models
 
 networks:
   ecloud_network:
