@@ -88,7 +88,12 @@ export const authAPI = {
   register: async (userData) => {
     return apiCall(
       async () => {
-        const response = await api.post('/auth/register/', userData);
+        // Auto-detect and include user's timezone
+        const userDataWithTimezone = {
+          ...userData,
+          user_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Athens'
+        };
+        const response = await api.post('/auth/register/', userDataWithTimezone);
         return response.data;
       },
       {
