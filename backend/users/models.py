@@ -65,6 +65,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     country_code = models.CharField(max_length=5, blank=True, null=True, help_text="Country code (e.g., +1, +30)")
     profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
+    
+    # User's timezone for accurate scheduling and notifications
+    user_timezone = models.CharField(
+        max_length=50,
+        default='Europe/Athens',
+        help_text="User's timezone (e.g., 'Europe/Athens', 'America/New_York'). Used for job scheduling and timing validation."
+    )
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

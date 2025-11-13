@@ -39,6 +39,7 @@ class UserSerializer(serializers.ModelSerializer):
             'phone_number', 
             'country_code',
             'profile_picture', 
+            'user_timezone',  # User's timezone for scheduling
             'is_active',
             'oauth_provider',  # Show which OAuth provider (google, etc.) or null
             'is_oauth_user',  # Boolean helper field

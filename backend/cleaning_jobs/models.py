@@ -266,19 +266,33 @@ class CleaningJob(models.Model):
         """
         Check if the job can be started based on timing constraints.
         Job can be started 30 minutes before scheduled time.
+        
+        Uses the cleaner's timezone for accurate local time validation.
         """
-        from django.utils import timezone
+        from django.utils import timezone as django_timezone
         from datetime import datetime, timedelta
+        import pytz
         
         if not self.scheduled_date or not self.start_time:
             return False, "Job has no scheduled date/time"
         
-        # Combine scheduled date and time
-        scheduled_datetime = datetime.combine(self.scheduled_date, self.start_time)
-        scheduled_datetime = timezone.make_aware(scheduled_datetime)
+        # Get the cleaner's timezone (fallback to Europe/Athens for safety)
+        user_tz_str = 'Europe/Athens'
+        if self.cleaner and hasattr(self.cleaner, 'user_timezone'):
+            user_tz_str = self.cleaner.user_timezone or 'Europe/Athens'
         
-        # Current time
-        now = timezone.now()
+        try:
+            user_tz = pytz.timezone(user_tz_str)
+        except pytz.exceptions.UnknownTimeZoneError:
+            # Fallback to Athens if invalid timezone
+            user_tz = pytz.timezone('Europe/Athens')
+        
+        # Combine scheduled date and time in user's timezone
+        scheduled_datetime = datetime.combine(self.scheduled_date, self.start_time)
+        scheduled_datetime = user_tz.localize(scheduled_datetime)
+        
+        # Get current time in user's timezone
+        now = django_timezone.now().astimezone(user_tz)
         
         # Allow starting 30 minutes before scheduled time
         earliest_start = scheduled_datetime - timedelta(minutes=30)
