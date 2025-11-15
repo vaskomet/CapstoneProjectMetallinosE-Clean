@@ -90,7 +90,7 @@ const PaymentModal = ({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black transition-opacity duration-300 ${
+      className={`fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black transition-opacity duration-300 ${
         isOpen ? 'bg-opacity-50' : 'bg-opacity-0'
       }`}
       onClick={handleBackdropClick}

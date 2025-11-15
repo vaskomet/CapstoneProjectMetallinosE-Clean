@@ -252,6 +252,72 @@ export const jobWorkflowAPI = {
   },
 
   /**
+   * Accept job completion after reviewing cleaner's work
+   * @async
+   * @function acceptCompletion
+   * @param {number} jobId - Job ID to accept
+   * @param {string} [notes=''] - Optional notes about acceptance
+   * @returns {Promise<Object>} Job acceptance response
+   */
+  acceptCompletion: async (jobId, notes = '') => {
+    return apiCall(
+      async () => {
+        const formData = new FormData();
+        formData.append('action_type', 'accept_completion');
+        if (notes) {
+          formData.append('notes', notes);
+        }
+
+        const response = await api.post(`/lifecycle/jobs/${jobId}/workflow/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return response.data;
+      },
+      {
+        loadingKey: `accept_completion_${jobId}`,
+        successMessage: 'Job completion accepted! You can now leave a review.',
+        showSuccess: true
+      }
+    );
+  },
+
+  /**
+   * Reject job completion and request additional work
+   * @async
+   * @function rejectCompletion
+   * @param {number} jobId - Job ID to reject
+   * @param {string} notes - Required notes explaining what needs to be fixed
+   * @returns {Promise<Object>} Job rejection response
+   */
+  rejectCompletion: async (jobId, notes) => {
+    return apiCall(
+      async () => {
+        if (!notes || notes.trim().length < 10) {
+          throw new Error('Please provide a detailed reason for rejecting the work (at least 10 characters).');
+        }
+
+        const formData = new FormData();
+        formData.append('action_type', 'reject_completion');
+        formData.append('notes', notes);
+
+        const response = await api.post(`/lifecycle/jobs/${jobId}/workflow/`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        return response.data;
+      },
+      {
+        loadingKey: `reject_completion_${jobId}`,
+        successMessage: 'Work rejected. The cleaner has been notified to make corrections.',
+        showSuccess: true
+      }
+    );
+  },
+
+  /**
    * Check the current status of a job
    * @async
    * @function checkStatus
@@ -273,52 +339,21 @@ export const jobWorkflowAPI = {
 };
 
 /**
- * Job Notifications API module
+ * Job Notifications API module - DEPRECATED
  *
- * Handles job-specific notifications and communication.
+ * ⚠️ This module has been consolidated with the generic notifications system.
+ * Use the main notifications API instead: `/api/notifications/`
  *
- * @namespace jobNotificationsAPI
+ * The job-specific notifications endpoint `/lifecycle/notifications/` has been removed.
+ * All notifications (jobs, chat, payments, system) now use the unified endpoint.
+ *
+ * Migration date: November 14, 2025
+ * See: NOTIFICATION_SYSTEM_DUPLICATION_ANALYSIS.md
+ *
+ * @deprecated Use notifications API at `/api/notifications/` instead
  */
-export const jobNotificationsAPI = {
-  /**
-   * Get all job-related notifications
-   * @async
-   * @function getAll
-   * @returns {Promise<Array>} Array of notification objects
-   */
-  getAll: async () => {
-    return apiCall(
-      async () => {
-        const response = await api.get('/lifecycle/notifications/');
-        return response.data;
-      },
-      {
-        loadingKey: 'notifications_list',
-        showSuccess: false
-      }
-    );
-  },
-
-  /**
-   * Mark a specific notification as read
-   * @async
-   * @function markAsRead
-   * @param {number} notificationId - Notification ID to mark as read
-   * @returns {Promise<Object>} Notification update response
-   */
-  markAsRead: async (notificationId) => {
-    return apiCall(
-      async () => {
-        const response = await api.patch(`/lifecycle/notifications/${notificationId}/`, {
-          is_read: true
-        });
-        return response.data;
-      },
-      {
-        loadingKey: `notification_read_${notificationId}`,
-        successMessage: 'Notification marked as read',
-        showSuccess: false
-      }
-    );
-  },
-};
+// REMOVED - Consolidated with generic notifications system
+// export const jobNotificationsAPI = {
+//   getAll: async () => api.get('/api/notifications/'),
+//   markAsRead: async (notificationId) => api.patch(`/api/notifications/${notificationId}/`, { is_read: true })
+// };

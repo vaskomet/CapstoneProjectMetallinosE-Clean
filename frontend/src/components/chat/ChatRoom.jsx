@@ -367,9 +367,32 @@ const ChatRoom = ({ jobId, roomId: propRoomId, bidderId, className = "" }) => {
                       </span>
                     )}
                     <div className="flex-1">
-                      <p className="text-sm whitespace-pre-wrap break-words">
-                        {message.content}
-                      </p>
+                      <div className="text-sm whitespace-pre-wrap break-words">
+                        {message.content.split('\n').map((line, lineIndex) => (
+                          <div key={lineIndex}>
+                            {line.split(/(https?:\/\/[^\s]+)/g).map((part, partIndex) => {
+                              // Check if this part is a URL
+                              if (part.match(/^https?:\/\//)) {
+                                return (
+                                  <a
+                                    key={partIndex}
+                                    href={part}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`underline hover:opacity-80 ${
+                                      isOwnMessage ? 'text-blue-100' : 'text-blue-600'
+                                    }`}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {part}
+                                  </a>
+                                );
+                              }
+                              return part;
+                            })}
+                          </div>
+                        ))}
+                      </div>
 
                       {/* File Attachment Link */}
                       {message.attachment && (

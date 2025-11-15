@@ -9,7 +9,9 @@ import { useUser } from '../contexts/UserContext';
 import { useToast } from '../contexts/ToastContext';
 import { useUnifiedChat } from '../contexts/UnifiedChatContext';
 import { cleaningJobsAPI } from '../services/api';
-import { jobPhotosAPI } from '../services/jobLifecycleAPI';
+import { jobPhotosAPI, jobWorkflowAPI } from '../services/jobLifecycleAPI';
+import JobProgressBar from './jobs/JobProgressBar';
+import JobStatusCard from './jobs/JobStatusCard';
 import ReviewForm from './ReviewForm';
 import ReviewList from './ReviewList';
 import ReviewStats from './ReviewStats';
@@ -31,6 +33,10 @@ const CompletedJobsDashboard = () => {
   const [canReview, setCanReview] = useState(false);
   const [reviewEligibility, setReviewEligibility] = useState(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  
+  // Rejection modal states
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   useEffect(() => {
     fetchCompletedJobs();
@@ -48,11 +54,62 @@ const CompletedJobsDashboard = () => {
     }
   }, [location.state, completedJobs, navigate, location.pathname]);
 
+  // Listen for job notification events and auto-refresh affected jobs
+  useEffect(() => {
+    const handleJobNotification = async (event) => {
+      const { jobId, notificationType } = event.detail;
+      
+      console.log('🔔 [CompletedJobsDashboard] Job notification received for job:', jobId, 'type:', notificationType);
+      
+      try {
+        // Fetch fresh job data
+        const freshJob = await cleaningJobsAPI.getById(jobId);
+        
+        // Update completedJobs array
+        setCompletedJobs(prevJobs => {
+          const jobIndex = prevJobs.findIndex(job => job.id === jobId);
+          if (jobIndex !== -1) {
+            const updated = [...prevJobs];
+            updated[jobIndex] = freshJob;
+            return updated;
+          }
+          // If job moved to completed/awaiting_review, add it
+          if (freshJob.status === 'completed' || freshJob.status === 'awaiting_review') {
+            return [freshJob, ...prevJobs];
+          }
+          return prevJobs;
+        });
+        
+        // If this job is currently selected, update it and refresh photos
+        if (selectedJob?.id === jobId) {
+          console.log('🔄 [CompletedJobsDashboard] Updating selected job with fresh data');
+          setSelectedJob(freshJob);
+          fetchJobPhotos(jobId);
+          toast.info('Job details updated', { autoClose: 2000 });
+        }
+        
+        console.log('✅ [CompletedJobsDashboard] Job auto-refresh complete');
+      } catch (error) {
+        console.error('❌ [CompletedJobsDashboard] Failed to auto-refresh job:', error);
+      }
+    };
+    
+    window.addEventListener('jobNotificationReceived', handleJobNotification);
+    
+    return () => {
+      window.removeEventListener('jobNotificationReceived', handleJobNotification);
+    };
+  }, [selectedJob?.id]);
+
   const fetchCompletedJobs = async () => {
     try {
       setLoading(true);
-      const response = await cleaningJobsAPI.getAll({ status: 'completed' });
-      const jobs = response.results || response || [];
+      // Fetch both completed and awaiting_review jobs for clients
+      const statuses = user?.role === 'client' ? ['completed', 'awaiting_review'] : ['completed'];
+      const allJobs = await Promise.all(
+        statuses.map(status => cleaningJobsAPI.getAll({ status }))
+      );
+      const jobs = allJobs.flatMap(response => response.results || response || []);
       setCompletedJobs(jobs);
     } catch (error) {
       console.error('Failed to fetch completed jobs:', error);
@@ -86,8 +143,6 @@ const CompletedJobsDashboard = () => {
 
   // Check if user can review this job
   const checkReviewEligibility = async (jobId) => {
-    console.log('🔍 Checking review eligibility for job:', jobId);
-    
     // Reset states
     setCanReview(false);
     setReviewEligibility(null);
@@ -95,39 +150,24 @@ const CompletedJobsDashboard = () => {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        console.error('❌ No access token found');
-        setCanReview(false);
         setReviewEligibility({ can_review: false, reason: 'Please log in to leave a review.' });
         return;
       }
       
       const response = await fetch(`http://localhost:8000/api/reviews/can-review/${jobId}/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       
       if (!response.ok) {
-        console.error('❌ API returned error:', response.status);
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error details:', errorData);
-        setCanReview(false);
         setReviewEligibility({ can_review: false, reason: 'Unable to check review eligibility.' });
         return;
       }
       
       const data = await response.json();
-      console.log('✅ Review eligibility response:', data);
-      console.log('   can_review:', data.can_review);
-      console.log('   reason:', data.reason);
-      
       setCanReview(data.can_review === true);
       setReviewEligibility(data);
-      
-      console.log('📊 State updated - canReview:', data.can_review);
     } catch (error) {
-      console.error('❌ Failed to check review eligibility:', error);
-      setCanReview(false);
+      console.error('Failed to check review eligibility:', error);
       setReviewEligibility({ can_review: false, reason: 'Network error. Please try again.' });
     }
   };
@@ -153,11 +193,60 @@ const CompletedJobsDashboard = () => {
       toast.success('Review submitted successfully!');
       setShowReviewForm(false);
       setCanReview(false);
-      // Refresh eligibility
+      // Refresh jobs and eligibility
+      await fetchCompletedJobs();
       checkReviewEligibility(selectedJob.id);
     } catch (error) {
       toast.error(error.message || 'Failed to submit review');
       throw error;
+    }
+  };
+
+  // Accept job completion (client only)
+  const handleAcceptCompletion = async () => {
+    if (!selectedJob || selectedJob.status !== 'awaiting_review') {
+      toast.error('Job must be awaiting review to accept completion');
+      return;
+    }
+
+    try {
+      await jobWorkflowAPI.acceptCompletion(selectedJob.id, 'Client verified and accepted the completed work.');
+      // Refresh the job list to show updated status
+      await fetchCompletedJobs();
+      // Update selected job
+      const updatedJob = await cleaningJobsAPI.getById(selectedJob.id);
+      setSelectedJob(updatedJob);
+      // Recheck review eligibility
+      checkReviewEligibility(selectedJob.id);
+    } catch (error) {
+      toast.error(error.message || 'Failed to accept job completion');
+    }
+  };
+
+  // Reject job completion (client only)
+  const handleRejectCompletion = async () => {
+    if (!selectedJob || selectedJob.status !== 'awaiting_review') {
+      toast.error('Job must be awaiting review to reject completion');
+      return;
+    }
+
+    if (!rejectionReason || rejectionReason.trim().length < 10) {
+      toast.error('Please provide a detailed reason for rejecting the work (at least 10 characters)');
+      return;
+    }
+
+    try {
+      await jobWorkflowAPI.rejectCompletion(selectedJob.id, rejectionReason);
+      // Close modal and reset state
+      setShowRejectModal(false);
+      setRejectionReason('');
+      // Refresh the job list to show updated status
+      await fetchCompletedJobs();
+      // Update selected job
+      const updatedJob = await cleaningJobsAPI.getById(selectedJob.id);
+      setSelectedJob(updatedJob);
+    } catch (error) {
+      toast.error(error.message || 'Failed to reject job completion');
     }
   };
 
@@ -174,13 +263,10 @@ const CompletedJobsDashboard = () => {
         body: JSON.stringify({ response_text: responseText })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit response');
-      }
+      if (!response.ok) throw new Error('Failed to submit response');
 
       toast.success('Response submitted successfully!');
-      // Reload to show new response
-      window.location.reload();
+      window.location.reload(); // Consider replacing with state update
     } catch (error) {
       toast.error(error.message || 'Failed to submit response');
       throw error;
@@ -208,23 +294,20 @@ const CompletedJobsDashboard = () => {
 
   // Handle review flag
   const handleFlag = async (reviewId) => {
-    try {
-      const token = localStorage.getItem('access_token');
-      const reason = prompt('Please select a reason:\n1. Inappropriate Content\n2. Harassment\n3. Spam\n4. False Information\n5. Other');
-      
-      const reasonMap = {
-        '1': 'inappropriate',
-        '2': 'harassment',
-        '3': 'spam',
-        '4': 'false_info',
-        '5': 'other'
-      };
+    const reasonMap = {
+      '1': 'inappropriate',
+      '2': 'harassment',
+      '3': 'spam',
+      '4': 'false_info',
+      '5': 'other'
+    };
 
-      if (!reason || !reasonMap[reason]) {
-        return;
-      }
+    try {
+      const reason = prompt('Please select a reason:\n1. Inappropriate Content\n2. Harassment\n3. Spam\n4. False Information\n5. Other');
+      if (!reason || !reasonMap[reason]) return;
 
       const details = prompt('Additional details (optional):');
+      const token = localStorage.getItem('access_token');
 
       const response = await fetch(`http://localhost:8000/api/reviews/${reviewId}/flag/`, {
         method: 'POST',
@@ -238,10 +321,7 @@ const CompletedJobsDashboard = () => {
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to flag review');
-      }
-
+      if (!response.ok) throw new Error('Failed to flag review');
       toast.success('Review flagged successfully');
     } catch (error) {
       toast.error(error.message || 'Failed to flag review');
@@ -280,16 +360,17 @@ const CompletedJobsDashboard = () => {
 
   const calculateDuration = (startTime, endTime) => {
     if (!startTime || !endTime) return 'N/A';
-    const start = new Date(startTime);
-    const end = new Date(endTime);
-    const diffMs = end - start;
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (diffHours > 0) {
-      return `${diffHours}h ${diffMinutes}m`;
-    }
-    return `${diffMinutes}m`;
+    const diffMs = new Date(endTime) - new Date(startTime);
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
   };
 
   const renderStarRating = (rating) => {
@@ -310,13 +391,6 @@ const CompletedJobsDashboard = () => {
         <span className="text-sm text-gray-600 ml-1">({rating}/5)</span>
       </div>
     );
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
   };
 
   const groupPhotosByType = (photos) => {
@@ -600,6 +674,23 @@ const CompletedJobsDashboard = () => {
                       Job #{selectedJob.id} Details
                     </h2>
                     
+                    {/* Progress Indicator - Visual workflow progress */}
+                    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+                      <JobProgressBar 
+                        currentStatus={selectedJob.status}
+                        size="md"
+                        showLabels={true}
+                      />
+                    </div>
+
+                    {/* Status Card - Contextual information about current stage */}
+                    <div className="mb-6">
+                      <JobStatusCard 
+                        job={selectedJob}
+                        userRole={user?.role}
+                      />
+                    </div>
+                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Basic Information */}
                       <div className="space-y-4">
@@ -805,18 +896,10 @@ const CompletedJobsDashboard = () => {
                             : '💡 Share your experience working with this client.'}
                         </p>
                         
-                        {/* Debug info - remove after testing */}
-                        <div className="text-xs text-gray-400 mb-2">
-                          Debug: canReview={String(canReview)}, showForm={String(showReviewForm)}, hasEligibility={String(!!reviewEligibility)}
-                        </div>
-                        
                         {canReview && !showReviewForm && (
                           <button 
                             className="px-6 py-3 text-sm font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-md hover:shadow-lg"
-                            onClick={() => {
-                              console.log('🖱️ Leave a Review button clicked!');
-                              setShowReviewForm(true);
-                            }}
+                            onClick={() => setShowReviewForm(true)}
                           >
                             ✍️ Leave a Review
                           </button>
@@ -951,6 +1034,59 @@ const CompletedJobsDashboard = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* Accept/Reject Completion Section (Client Only, Awaiting Review Status) */}
+                  {user?.role === 'client' && selectedJob.status === 'awaiting_review' && (
+                    <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-b border-blue-200">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center">
+                        <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Verify Completed Work
+                      </h3>
+                      <p className="text-gray-700 text-sm mb-4">
+                        Please review the before and after photos above to verify the cleaning work has been completed to your satisfaction.
+                      </p>
+                      <div className="bg-white rounded-lg p-4 border border-blue-200">
+                        <div className="flex items-start mb-4">
+                          <svg className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="text-sm text-gray-600">
+                            <p className="mb-1">
+                              <strong>Before photos:</strong> {jobPhotos.filter(p => p.photo_type === 'before').length}
+                            </p>
+                            <p>
+                              <strong>After photos:</strong> {jobPhotos.filter(p => p.photo_type === 'after').length}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={handleAcceptCompletion}
+                            className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-medium rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center"
+                          >
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Accept Work
+                          </button>
+                          <button
+                            onClick={() => setShowRejectModal(true)}
+                            className="px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white font-medium rounded-lg hover:from-red-700 hover:to-rose-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center"
+                          >
+                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            Request Fixes
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-3 text-center">
+                          You can leave an optional review after accepting completion
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
@@ -964,6 +1100,70 @@ const CompletedJobsDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Rejection Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Request Additional Work
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectionReason('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Please explain what needs to be fixed or improved. The cleaner will be notified and can return to complete the work properly.
+              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for rejection <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 min-h-[120px]"
+                placeholder="Please describe what needs to be fixed (minimum 10 characters)..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {rejectionReason.length} / 10 characters minimum
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3 rounded-b-lg">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectionReason('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectCompletion}
+                disabled={rejectionReason.trim().length < 10}
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-lg hover:from-red-700 hover:to-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
+              >
+                Send to Cleaner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

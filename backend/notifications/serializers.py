@@ -7,6 +7,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     time_ago = serializers.SerializerMethodField()
     content_object_data = serializers.SerializerMethodField()
+    job = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
@@ -14,7 +15,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             'id', 'recipient', 'sender', 'notification_type',
             'title', 'message', 'priority', 'is_read', 'is_delivered',
             'created_at', 'read_at', 'delivered_at', 'expires_at',
-            'action_url', 'metadata', 'time_ago', 'content_object_data'
+            'action_url', 'metadata', 'time_ago', 'content_object_data', 'job'
         ]
         read_only_fields = [
             'created_at', 'read_at', 'delivered_at', 'is_delivered'
@@ -48,6 +49,12 @@ class NotificationSerializer(serializers.ModelSerializer):
                     'id': obj.object_id,
                     'str': str(obj.content_object)
                 }
+        return None
+    
+    def get_job(self, obj):
+        """Get job ID if this notification is related to a CleaningJob"""
+        if obj.content_object and obj.content_type.model == 'cleaningjob':
+            return obj.object_id
         return None
 
 

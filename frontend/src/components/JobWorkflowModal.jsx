@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import PhotoUpload from './PhotoUpload';
+import TimeAwareIndicator from './TimeAwareIndicator';
+import { getStatusBadgeClasses, getStatusConfig } from '../constants/statusColors';
 import { jobWorkflowAPI } from '../services/jobLifecycleAPI';
 
 const JobWorkflowModal = ({ 
@@ -135,8 +137,18 @@ const JobWorkflowModal = ({
 
       toast.success(result.message || `Job ${action}ed successfully!`);
       
+      // Fetch fresh job data after successful action
       if (onJobUpdated) {
-        onJobUpdated(result.job || job);
+        try {
+          const { cleaningJobsAPI } = await import('../services/api');
+          const freshJob = await cleaningJobsAPI.getById(job.id);
+          console.log(`✅ Fetched fresh job data after ${action}:`, freshJob.status);
+          onJobUpdated(freshJob);
+        } catch (fetchError) {
+          console.error('Failed to fetch fresh job data:', fetchError);
+          // Fallback to updating with response data
+          onJobUpdated(result.job || job);
+        }
       }
       
       onClose();
@@ -161,7 +173,7 @@ const JobWorkflowModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[70]">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
@@ -200,6 +212,11 @@ const JobWorkflowModal = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Time-Aware Indicator Banner */}
+          {(action === 'start' || action === 'finish') && (
+            <TimeAwareIndicator job={job} variant="banner" />
+          )}
+
           {/* Payment Status Warning */}
           {(action === 'start' || action === 'finish') && job.payment_info && job.payment_info.status !== 'succeeded' && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -219,7 +236,13 @@ const JobWorkflowModal = ({
 
           {/* Job Details */}
           <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-2">Job Details</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium text-gray-900">Job Details</h3>
+              {/* Status Badge with Icon */}
+              <span className={getStatusBadgeClasses(job.status)}>
+                {getStatusConfig(job.status).icon} {getStatusConfig(job.status).label}
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="font-medium text-gray-600">Address:</span>

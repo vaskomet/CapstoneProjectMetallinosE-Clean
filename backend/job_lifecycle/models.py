@@ -155,77 +155,32 @@ class JobLifecycleEvent(models.Model):
         return f"Job #{self.job.id}: {self.event_type} by {self.triggered_by} at {self.timestamp}"
 
 
-class JobNotification(models.Model):
-    """
-    Real-time notifications for job events.
-    Keeps cleaners and clients informed about important job updates.
-    """
-    NOTIFICATION_TYPE_CHOICES = [
-        ('bid_accepted', 'Your bid was accepted!'),
-        ('job_confirmed', 'Job confirmed by cleaner'),
-        ('job_ready', 'Job ready to start'),
-        ('job_started', 'Job has started'),
-        ('job_finished', 'Job completed - please review'),
-        ('payment_processed', 'Payment processed'),
-        ('review_received', 'Review received'),
-    ]
-    
-    job = models.ForeignKey(
-        CleaningJob,
-        on_delete=models.CASCADE,
-        related_name='notifications'
-    )
-    
-    # Who should receive this notification
-    recipient = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='job_notifications'
-    )
-    
-    notification_type = models.CharField(
-        max_length=20,
-        choices=NOTIFICATION_TYPE_CHOICES
-    )
-    
-    title = models.CharField(
-        max_length=100,
-        help_text="Short notification title"
-    )
-    
-    message = models.TextField(
-        help_text="Detailed notification message"
-    )
-    
-    # Status tracking
-    is_read = models.BooleanField(default=False)
-    read_at = models.DateTimeField(null=True, blank=True)
-    
-    # Optional action URL for frontend navigation
-    action_url = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Frontend URL for this notification action"
-    )
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['recipient', 'is_read']),
-            models.Index(fields=['created_at']),
-        ]
-        ordering = ['-created_at']
-    
-    def mark_as_read(self):
-        """Mark notification as read with timestamp"""
-        self.is_read = True
-        self.read_at = timezone.now()
-        self.save()
-    
-    def __str__(self):
-        status = "Read" if self.is_read else "Unread"
-        return f"{status}: {self.title} for {self.recipient.username}"
+# JobNotification model REMOVED - consolidated with generic notifications system
+# 
+# Migration: All 28 JobNotification records migrated to notifications.Notification
+# Migration file: 0003_migrate_notifications_to_generic.py
+# Date: November 14, 2025
+#
+# Use notifications.utils.create_and_send_notification() instead:
+#
+#   from notifications.utils import create_and_send_notification
+#   
+#   create_and_send_notification(
+#       recipient=user,
+#       notification_type='job_started',
+#       title="Job Started",
+#       message="Your job has started...",
+#       priority='high',
+#       content_object=job,  # Links to CleaningJob via ContentType
+#       action_url=f"/jobs/{job.id}",
+#       metadata={'job_status': job.status}
+#   )
+#
+# Benefits of consolidation:
+# - All notifications in one place (complete history for users)
+# - Additional features: priority, delivery tracking, expiration, templates
+# - Generic system works with ANY model via ContentType framework
+# - Eliminates code duplication and maintenance burden
 
 
 class JobAction(models.Model):
@@ -237,6 +192,8 @@ class JobAction(models.Model):
         ('confirm_bid', 'Confirm Accepted Bid'),
         ('start_job', 'Start Job'),
         ('finish_job', 'Finish Job'),
+        ('accept_completion', 'Accept Job Completion'),  # Client accepts finished work
+        ('reject_completion', 'Reject Job Completion'),  # Client rejects finished work
         ('upload_photos', 'Upload Photos'),
         ('add_note', 'Add Note'),
     ]

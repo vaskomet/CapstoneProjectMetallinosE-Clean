@@ -385,9 +385,9 @@ class JobReviewEligibilityView(APIView):
             'job_status': job.status
         }
         
-        # Check if job is completed
-        if job.status != 'completed':
-            response_data['reason'] = 'Job must be completed before it can be reviewed.'
+        # Check if job is awaiting_review or completed
+        if job.status not in ['awaiting_review', 'completed']:
+            response_data['reason'] = 'Job must be awaiting review or completed before it can be reviewed.'
             return Response(response_data)
         
         # Check if user is a participant

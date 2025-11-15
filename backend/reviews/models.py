@@ -80,12 +80,16 @@ class Review(models.Model):
         """
         Override save to set reviewee automatically based on reviewer.
         If reviewer is client, reviewee is cleaner (and vice versa).
+        
+        Note: Review submission does NOT change job status. Job completion
+        is handled separately when client accepts the finished work.
         """
         if not self.reviewee_id:
             if self.reviewer == self.job.client:
                 self.reviewee = self.job.cleaner
             elif self.reviewer == self.job.cleaner:
                 self.reviewee = self.job.client
+        
         super().save(*args, **kwargs)
 
 

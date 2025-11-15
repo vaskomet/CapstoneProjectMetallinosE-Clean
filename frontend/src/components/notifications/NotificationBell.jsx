@@ -92,10 +92,16 @@ const NotificationBell = ({ className = "" }) => {
   /**
    * Handles notification click events
    * Marks notification as read and navigates to action URL if available
+   * Extracts job ID from URL and passes it to trigger fresh data fetch
    * @param {Object} notification - The notification object clicked
    */
   const handleNotificationClick = (notification) => {
-    console.log('👆 Notification clicked:', notification);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('� NOTIFICATION CLICKED');
+    console.log('   ID:', notification.id);
+    console.log('   Title:', notification.title);
+    console.log('   Action URL:', notification.action_url);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     // Mark as read only if not already read
     if (!notification.is_read) {
@@ -110,8 +116,31 @@ const NotificationBell = ({ className = "" }) => {
 
     // Navigate to action URL if available (e.g., job details, chat)
     if (notification.action_url) {
-      console.log('🔗 Navigating to:', notification.action_url);
-      navigate(notification.action_url);
+      console.log('🔗 Processing action URL:', notification.action_url);
+      
+      // Extract job ID from URL patterns like:
+      // /client/jobs/{id}, /cleaner/jobs/{id}, /jobs/{id}, /jobs/{id}/chat
+      const jobIdMatch = notification.action_url.match(/\/jobs\/(\d+)/);
+      
+      if (jobIdMatch) {
+        const jobId = parseInt(jobIdMatch[1], 10);
+        console.log('✅ Extracted job ID from notification:', jobId);
+        console.log('🚀 Navigating to /jobs with state:', { selectedJobId: jobId, fromNotification: true });
+        
+        // Navigate to /jobs with job ID in state to trigger auto-open and fresh fetch
+        navigate('/jobs', { 
+          state: { 
+            selectedJobId: jobId,
+            fromNotification: true // Flag to indicate this is from a notification
+          } 
+        });
+        
+        console.log('✅ Navigation dispatched');
+      } else {
+        // No job ID found, navigate normally
+        console.log('⚠️ No job ID pattern found in URL, navigating normally');
+        navigate(notification.action_url);
+      }
     } else {
       console.log('⚠️ No action URL for notification');
     }

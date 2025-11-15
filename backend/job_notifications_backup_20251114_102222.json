@@ -1,0 +1,423 @@
+⚠️  Warning: /.env.dev.local not found, using system environment variables
+[
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 1,
+  "fields": {
+    "job": 5134,
+    "recipient": 1827,
+    "notification_type": "job_started",
+    "title": "Job Started",
+    "message": "Your cleaning job has started. 1 before photos uploaded.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5134",
+    "created_at": "2025-11-13T10:08:03.778Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 2,
+  "fields": {
+    "job": 5134,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5134/review",
+    "created_at": "2025-11-13T10:08:21.460Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 3,
+  "fields": {
+    "job": 5134,
+    "recipient": 1833,
+    "notification_type": "job_accepted",
+    "title": "Job Accepted by Client",
+    "message": "Great work! The client has accepted the completion of this job.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5134",
+    "created_at": "2025-11-13T18:45:54.335Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 4,
+  "fields": {
+    "job": 5135,
+    "recipient": 1827,
+    "notification_type": "job_started",
+    "title": "Job Started",
+    "message": "Your cleaning job has started. 1 before photos uploaded.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5135",
+    "created_at": "2025-11-13T19:02:31.484Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 5,
+  "fields": {
+    "job": 5135,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5135/review",
+    "created_at": "2025-11-13T19:02:57.375Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 6,
+  "fields": {
+    "job": 5135,
+    "recipient": 1833,
+    "notification_type": "job_accepted",
+    "title": "Job Accepted by Client",
+    "message": "Great work! The client has accepted the completion of this job.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5135",
+    "created_at": "2025-11-13T19:03:10.603Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 7,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_started",
+    "title": "Job Started",
+    "message": "Your cleaning job has started. 1 before photos uploaded.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137",
+    "created_at": "2025-11-13T20:06:13.586Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 8,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T20:54:30.840Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 9,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Reason: this is not how it should be done",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T20:58:37.776Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 10,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T21:29:18.103Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 11,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T21:30:05.822Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 12,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T21:32:37.402Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 13,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T21:33:01.207Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 14,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T21:34:40.992Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 15,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T21:35:08.525Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 16,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T21:52:50.596Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 17,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T21:54:11.135Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 18,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T22:00:31.136Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 19,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T22:02:55.585Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 20,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-13T22:03:19.086Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 21,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-13T22:08:24.768Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 22,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-14T07:58:35.393Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 23,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-14T07:59:11.259Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 24,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-14T08:12:21.377Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 25,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-14T08:12:48.212Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 26,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-14T08:13:32.156Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 27,
+  "fields": {
+    "job": 5137,
+    "recipient": 1833,
+    "notification_type": "job_rejected",
+    "title": "Work Needs Revision",
+    "message": "The client has requested additional work on this job. Check your messages for details.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/cleaner/jobs/5137",
+    "created_at": "2025-11-14T08:14:18.247Z"
+  }
+},
+{
+  "model": "job_lifecycle.jobnotification",
+  "pk": 28,
+  "fields": {
+    "job": 5137,
+    "recipient": 1827,
+    "notification_type": "job_finished",
+    "title": "Job Completed",
+    "message": "Your cleaning job has been completed! Please review the work and provide feedback.",
+    "is_read": false,
+    "read_at": null,
+    "action_url": "/client/jobs/5137/review",
+    "created_at": "2025-11-14T08:14:40.276Z"
+  }
+}
+]

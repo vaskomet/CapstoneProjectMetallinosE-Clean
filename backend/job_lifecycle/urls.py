@@ -7,14 +7,14 @@ Defines URL patterns for the enhanced job workflow management.
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    JobPhotoViewSet, JobWorkflowView, JobNotificationViewSet, 
+    JobPhotoViewSet, JobWorkflowView,
     JobLifecycleEventViewSet, JobStatusCheckView
 )
 
 # Create router for ViewSets
 router = DefaultRouter()
 router.register(r'photos', JobPhotoViewSet, basename='job-photos')
-router.register(r'notifications', JobNotificationViewSet, basename='job-notifications')
+# Notifications endpoint REMOVED - use /api/notifications/ instead (consolidated)
 router.register(r'events', JobLifecycleEventViewSet, basename='job-events')
 
 urlpatterns = [

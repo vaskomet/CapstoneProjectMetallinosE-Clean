@@ -5,38 +5,14 @@ Supports bidding system, job lifecycle management, scheduling, and eco-metrics t
 
 from datetime import date
 from rest_framework import serializers
-from .models import CleaningJob, JobBid, JobPhoto
+from .models import CleaningJob, JobBid
 from users.models import User
 from users.serializers import UserSerializer
+# Import JobPhotoSerializer from job_lifecycle app (active implementation)
+from job_lifecycle.serializers import JobPhotoSerializer
 
 
-class JobPhotoSerializer(serializers.ModelSerializer):
-    """
-    Serializer for JobPhoto model - handles before/after photo uploads.
-    """
-    image_url = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = JobPhoto
-        fields = [
-            'id',
-            'job',
-            'photo_type',
-            'image',
-            'image_url',
-            'description',
-            'uploaded_at'
-        ]
-        read_only_fields = ['id', 'uploaded_at']
-    
-    def get_image_url(self, obj):
-        """Return full URL for the image"""
-        if obj.image:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.image.url)
-            return obj.image.url
-        return None
+# Legacy JobPhotoSerializer removed - now using job_lifecycle.serializers.JobPhotoSerializer
 
 
 class JobBidSerializer(serializers.ModelSerializer):
@@ -148,6 +124,9 @@ class CleaningJobSerializer(serializers.ModelSerializer):
     # Bid statistics (count, average, min, max)
     bid_stats = serializers.SerializerMethodField()
     
+    # Latest rejection reason (if job was sent back for revisions)
+    rejection_reason = serializers.SerializerMethodField()
+    
     # Search result highlighting (only populated when search is active)
     highlighted_description = serializers.SerializerMethodField()
     highlighted_address = serializers.SerializerMethodField()
@@ -181,6 +160,7 @@ class CleaningJobSerializer(serializers.ModelSerializer):
             'after_photos',
             'payment_info',
             'bid_stats',
+            'rejection_reason',
             'highlighted_description',
             'highlighted_address',
             'highlighted_city',
@@ -213,12 +193,12 @@ class CleaningJobSerializer(serializers.ModelSerializer):
     
     def get_before_photos(self, obj):
         """Get all before photos for this job"""
-        before_photos = obj.photos.filter(photo_type='before')
+        before_photos = obj.lifecycle_photos.filter(photo_type='before')
         return JobPhotoSerializer(before_photos, many=True, context=self.context).data
     
     def get_after_photos(self, obj):
         """Get all after photos for this job"""
-        after_photos = obj.photos.filter(photo_type='after')
+        after_photos = obj.lifecycle_photos.filter(photo_type='after')
         return JobPhotoSerializer(after_photos, many=True, context=self.context).data
     
     def get_payment_info(self, obj):
@@ -279,6 +259,35 @@ class CleaningJobSerializer(serializers.ModelSerializer):
             'lowest': float(stats['lowest_bid']) if stats['lowest_bid'] else None,
             'highest': float(stats['highest_bid']) if stats['highest_bid'] else None,
         }
+    
+    def get_rejection_reason(self, obj):
+        """
+        Get the most recent rejection reason if job was sent back for revisions.
+        This helps cleaners understand what needs to be fixed.
+        
+        Returns:
+            dict: Contains rejection reason and timestamp, or None if never rejected.
+        """
+        try:
+            from job_lifecycle.models import JobAction
+            
+            # Get most recent reject_completion action
+            rejection = JobAction.objects.filter(
+                job=obj,
+                action_type='reject_completion'
+            ).order_by('-performed_at').first()
+            
+            if rejection:
+                return {
+                    'reason': rejection.notes,
+                    'rejected_at': rejection.performed_at.isoformat(),
+                    'rejected_by': rejection.performed_by.get_full_name() or rejection.performed_by.email
+                }
+            return None
+        except Exception as e:
+            # Log error but don't fail the serialization
+            print(f"Error getting rejection reason for job {obj.id}: {e}")
+            return None
     
     def get_highlighted_description(self, obj):
         """Get highlighted search results for services_description field"""

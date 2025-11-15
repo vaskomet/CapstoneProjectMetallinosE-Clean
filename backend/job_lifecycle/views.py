@@ -16,14 +16,17 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.conf import settings
 
-from .models import JobPhoto, JobLifecycleEvent, JobNotification, JobAction
+from .models import JobPhoto, JobLifecycleEvent, JobAction
 from .serializers import (
     JobPhotoSerializer, JobLifecycleEventSerializer, 
-    JobNotificationSerializer, JobActionSerializer,
+    JobActionSerializer,
     JobWorkflowSerializer, JobStatusUpdateSerializer
 )
 from cleaning_jobs.models import CleaningJob, JobBid
+# Import generic notification utility for consolidation
+from notifications.utils import create_and_send_notification
 
 
 class JobPhotoViewSet(viewsets.ModelViewSet):
@@ -86,9 +89,18 @@ class JobWorkflowView(generics.GenericAPIView):
         
         job = get_object_or_404(CleaningJob, id=job_id)
         
-        # Validate user permissions
-        if request.user.role != 'cleaner' or job.cleaner != request.user:
-            raise PermissionDenied("Only the assigned cleaner can perform job actions.")
+        # Get action type to determine permission check
+        action_type = request.data.get('action_type')
+        
+        # Different permissions for different actions
+        if action_type in ['accept_completion', 'reject_completion']:
+            # Only client can accept or reject completion
+            if request.user.role != 'client' or job.client != request.user:
+                raise PermissionDenied("Only the client can accept or reject job completion.")
+        else:
+            # Other actions are for cleaner only
+            if request.user.role != 'cleaner' or job.cleaner != request.user:
+                raise PermissionDenied("Only the assigned cleaner can perform job actions.")
         
         serializer = self.get_serializer(data=request.data)
         try:
@@ -116,6 +128,12 @@ class JobWorkflowView(generics.GenericAPIView):
             # Parse photos from multipart form data
             photos_data = self._parse_photos_from_request(request)
             return self._finish_job(job, photos_data, notes, latitude, longitude)
+        elif action_type == 'accept_completion':
+            # Client accepts the completed work
+            return self._accept_completion(job, notes)
+        elif action_type == 'reject_completion':
+            # Client rejects the completed work
+            return self._reject_completion(job, notes)
         else:
             return Response({"error": "Invalid action type"}, status=status.HTTP_400_BAD_REQUEST)
     
@@ -189,14 +207,16 @@ class JobWorkflowView(generics.GenericAPIView):
             description=f"Cleaner confirmed accepted bid. Notes: {notes}"
         )
         
-        # Notify client
-        JobNotification.objects.create(
-            job=job,
+        # Notify client (using generic notification system)
+        create_and_send_notification(
             recipient=job.client,
             notification_type='job_confirmed',
             title="Job Confirmed",
             message=f"Cleaner {f'{self.request.user.first_name} {self.request.user.last_name}'.strip() or self.request.user.username} has confirmed your job for {job.scheduled_date}.",
-            action_url=f"/client/jobs/{job.id}"
+            priority='high',
+            content_object=job,
+            action_url=f"/client/jobs/{job.id}",
+            metadata={'job_status': job.status}
         )
         
         return Response({
@@ -262,14 +282,20 @@ class JobWorkflowView(generics.GenericAPIView):
             }
         )
         
-        # Notify client
-        JobNotification.objects.create(
-            job=job,
+        # Notify client (using generic notification system)
+        create_and_send_notification(
             recipient=job.client,
             notification_type='job_started',
             title="Job Started",
             message=f"Your cleaning job has started. {len(created_photos)} before photos uploaded.",
-            action_url=f"/client/jobs/{job.id}"
+            priority='high',
+            content_object=job,
+            action_url=f"/client/jobs/{job.id}",
+            metadata={
+                'job_status': job.status,
+                'photo_count': len(created_photos),
+                'location': {'lat': latitude, 'lng': longitude} if latitude and longitude else None
+            }
         )
         
         return Response({
@@ -333,14 +359,20 @@ class JobWorkflowView(generics.GenericAPIView):
             }
         )
         
-        # Notify client
-        JobNotification.objects.create(
-            job=job,
+        # Notify client (using generic notification system)
+        create_and_send_notification(
             recipient=job.client,
             notification_type='job_finished',
             title="Job Completed",
             message=f"Your cleaning job has been completed! Please review the work and provide feedback.",
-            action_url=f"/client/jobs/{job.id}/review"
+            priority='high',
+            content_object=job,
+            action_url=f"/client/jobs/{job.id}/review",
+            metadata={
+                'job_status': job.status,
+                'photo_count': len(created_photos),
+                'duration_minutes': duration.total_seconds() / 60 if duration else None
+            }
         )
         
         return Response({
@@ -350,36 +382,146 @@ class JobWorkflowView(generics.GenericAPIView):
             "duration": str(duration) if duration else None,
             "photos_uploaded": len(created_photos)
         })
-
-
-class JobLifecycleEventViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet for managing job notifications.
-    Users can view and mark notifications as read.
-    """
-    serializer_class = JobNotificationSerializer
-    permission_classes = [IsAuthenticated]
     
-    def get_queryset(self):
-        """Get notifications for the current user"""
-        return JobNotification.objects.filter(recipient=self.request.user)
-    
-    @action(detail=True, methods=['post'])
-    def mark_read(self, request, pk=None):
-        """Mark a notification as read"""
-        notification = self.get_object()
-        notification.mark_as_read()
-        return Response({"message": "Notification marked as read"})
-    
-    @action(detail=False, methods=['post'])
-    def mark_all_read(self, request):
-        """Mark all notifications as read for the user"""
-        updated = JobNotification.objects.filter(
-            recipient=request.user, 
-            is_read=False
-        ).update(is_read=True, read_at=timezone.now())
+    def _accept_completion(self, job, notes):
+        """Client accepts the completed work and transitions job to 'completed' status"""
+        if job.status != 'awaiting_review':
+            raise ValidationError("Job must be awaiting review to accept completion.")
         
-        return Response({"message": f"{updated} notifications marked as read"})
+        # Verify after photos exist
+        after_photos = JobPhoto.objects.filter(job=job, photo_type='after')
+        if not after_photos.exists():
+            raise ValidationError("Cannot accept completion without after photos from the cleaner.")
+        
+        # Update job status
+        old_status = job.status
+        job.status = 'completed'
+        job.save()
+        
+        # Record action
+        JobAction.objects.create(
+            job=job,
+            action_type='accept_completion',
+            performed_by=self.request.user,
+            notes=notes or "Client accepted job completion after reviewing work."
+        )
+        
+        # Create lifecycle event
+        JobLifecycleEvent.objects.create(
+            job=job,
+            event_type='status_change',
+            triggered_by=self.request.user,
+            old_status=old_status,
+            new_status=job.status,
+            description=f"Client accepted job completion. {after_photos.count()} after photos verified. Notes: {notes}",
+            metadata={
+                'after_photo_count': after_photos.count()
+            }
+        )
+        
+        # Notify cleaner (using generic notification system)
+        create_and_send_notification(
+            recipient=job.cleaner,
+            notification_type='job_accepted',
+            title="Job Accepted by Client",
+            message=f"Great work! The client has accepted the completion of this job.",
+            priority='high',
+            content_object=job,
+            action_url=f"/cleaner/jobs/{job.id}",
+            metadata={
+                'job_status': job.status,
+                'after_photo_count': after_photos.count()
+            }
+        )
+        
+        return Response({
+            "message": "Job completion accepted successfully",
+            "job_status": job.status,
+            "after_photos_count": after_photos.count()
+        })
+    
+    def _reject_completion(self, job, notes):
+        """Client rejects the completed work and sends job back to cleaner for fixes"""
+        if job.status != 'awaiting_review':
+            raise ValidationError("Job must be awaiting review to reject completion.")
+        
+        # Require rejection reason
+        if not notes or len(notes.strip()) < 10:
+            raise ValidationError("Please provide a detailed reason for rejecting the work (at least 10 characters).")
+        
+        # Update job status back to in_progress
+        old_status = job.status
+        job.status = 'in_progress'
+        job.save()
+        
+        # Record action
+        JobAction.objects.create(
+            job=job,
+            action_type='reject_completion',
+            performed_by=self.request.user,
+            notes=notes
+        )
+        
+        # Create lifecycle event
+        JobLifecycleEvent.objects.create(
+            job=job,
+            event_type='status_change',
+            triggered_by=self.request.user,
+            old_status=old_status,
+            new_status=job.status,
+            description=f"Client rejected job completion and requested fixes. Reason: {notes}"
+        )
+        
+        # Send direct message to cleaner with rejection details and job link
+        from chat.utils import send_system_message
+        import base64
+        
+        # Get frontend URL from settings
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        
+        # Encode job ID to obfuscate it in the URL
+        encoded_job_id = base64.urlsafe_b64encode(str(job.id).encode()).decode()
+        
+        dm_message = (
+            f"⚠️ Work Needs Revision - Job #{job.id}\n\n"
+            f"The client has requested additional work on this job.\n\n"
+            f"📝 Reason:\n{notes}\n\n"
+            f"👉 Click here to view job details:\n{frontend_url}/jobs?ref={encoded_job_id}"
+        )
+        
+        try:
+            send_system_message(
+                sender=self.request.user,  # Client
+                recipient=job.cleaner,      # Cleaner
+                message_content=dm_message,
+                job=job
+            )
+        except Exception as e:
+            # Log error but don't fail the rejection
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send rejection DM for job {job.id}: {e}", exc_info=True)
+        
+        # Also create notification for backup (using generic notification system)
+        create_and_send_notification(
+            recipient=job.cleaner,
+            notification_type='job_rejected',
+            title="Work Needs Revision",
+            message=f"The client has requested additional work on this job. Check your messages for details.",
+            priority='urgent',
+            content_object=job,
+            action_url=f"/cleaner/jobs/{job.id}",
+            metadata={
+                'job_status': job.status,
+                'rejection_reason': notes
+            }
+        )
+        
+        return Response({
+            "message": "Job completion rejected. The cleaner has been notified to make corrections.",
+            "job_status": job.status,
+            "rejection_reason": notes
+        })
 
 
 class JobStatusCheckView(generics.RetrieveAPIView):
@@ -428,34 +570,15 @@ class JobStatusCheckView(generics.RetrieveAPIView):
         })
 
 
-class JobNotificationViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    ViewSet for managing job notifications.
-    Users can view and mark notifications as read.
-    """
-    serializer_class = JobNotificationSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """Get notifications for the current user"""
-        return JobNotification.objects.filter(recipient=self.request.user)
-    
-    @action(detail=True, methods=['post'])
-    def mark_read(self, request, pk=None):
-        """Mark a notification as read"""
-        notification = self.get_object()
-        notification.mark_as_read()
-        return Response({"message": "Notification marked as read"})
-    
-    @action(detail=False, methods=['post'])
-    def mark_all_read(self, request):
-        """Mark all notifications as read for the user"""
-        updated = JobNotification.objects.filter(
-            recipient=request.user, 
-            is_read=False
-        ).update(is_read=True, read_at=timezone.now())
-        
-        return Response({"message": f"{updated} notifications marked as read"})
+# JobNotificationViewSet REMOVED - consolidated with generic notifications system
+#
+# Use notifications.views.NotificationViewSet instead:
+# - Endpoint: /api/notifications/
+# - Features: list, retrieve, mark_read, mark_all_read, unread_count
+# - Includes ALL notification types (jobs, chat, payments, system)
+#
+# Migration date: November 14, 2025
+# See: NOTIFICATION_SYSTEM_DUPLICATION_ANALYSIS.md
 
 
 class JobLifecycleEventViewSet(viewsets.ReadOnlyModelViewSet):

@@ -5,52 +5,14 @@ import os
 from django.utils import timezone
 
 
+# JobPhoto helper function kept for migration compatibility
+# Actual JobPhoto model removed - now using job_lifecycle.JobPhoto
 def job_photo_upload_path(instance, filename):
-    """Generate upload path for job photos: jobs/{job_id}/{before|after}/{filename}"""
-    return f'jobs/{instance.job.id}/{instance.photo_type}/{filename}'
-
-
-class JobPhoto(models.Model):
     """
-    JobPhoto model for storing before/after photos with proper file management.
-    Provides safety documentation and quality assurance.
+    Upload path helper for legacy migrations.
+    New code should use job_lifecycle.models.job_photo_upload_path
     """
-    PHOTO_TYPE_CHOICES = [
-        ('before', 'Before Photo'),
-        ('after', 'After Photo'),
-    ]
-    
-    job = models.ForeignKey(
-        'CleaningJob',
-        on_delete=models.CASCADE,
-        related_name='photos'
-    )
-    
-    photo_type = models.CharField(
-        max_length=10,
-        choices=PHOTO_TYPE_CHOICES
-    )
-    
-    image = models.ImageField(
-        upload_to=job_photo_upload_path,
-        help_text="Photo taken by cleaner for documentation"
-    )
-    
-    description = models.CharField(
-        max_length=200,
-        blank=True,
-        help_text="Optional description of what the photo shows"
-    )
-    
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        indexes = [
-            models.Index(fields=['job', 'photo_type']),
-        ]
-    
-    def __str__(self):
-        return f"{self.photo_type.title()} photo for Job #{self.job.id}"
+    return f"jobs/{instance.job.id}/{instance.photo_type}/{filename}"
 
 class JobBid(models.Model):
     """
@@ -349,7 +311,7 @@ class CleaningJob(models.Model):
         """
         Check if a user can leave a review for this job.
         Business rules:
-        - Job must be completed
+        - Job must be awaiting_review or completed
         - Job must have completion date (actual_end_time)
         - User must be a participant (client or cleaner)
         - Review must be within 30 days of completion
@@ -358,9 +320,9 @@ class CleaningJob(models.Model):
         from django.utils import timezone
         from datetime import timedelta
         
-        # Job must be completed
-        if self.status != 'completed':
-            return False, "Job must be completed before it can be reviewed."
+        # Job must be awaiting_review or completed
+        if self.status not in ['awaiting_review', 'completed']:
+            return False, "Job must be awaiting review or completed before it can be reviewed."
         
         # Job must have completion date
         if not self.actual_end_time:

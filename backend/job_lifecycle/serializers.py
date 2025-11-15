@@ -4,12 +4,11 @@ Job Lifecycle Serializers
 Handles serialization for the enhanced job workflow including:
 - Photo uploads with proper validation
 - Lifecycle event tracking
-- Notifications
 - Action management
 """
 
 from rest_framework import serializers
-from .models import JobPhoto, JobLifecycleEvent, JobNotification, JobAction
+from .models import JobPhoto, JobLifecycleEvent, JobAction
 from cleaning_jobs.models import CleaningJob
 from users.serializers import UserSerializer
 
@@ -85,27 +84,10 @@ class JobLifecycleEventSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'triggered_by', 'timestamp']
 
 
-class JobNotificationSerializer(serializers.ModelSerializer):
-    """
-    Serializer for JobNotification model - handles real-time notifications.
-    """
-    recipient = UserSerializer(read_only=True)
-    
-    class Meta:
-        model = JobNotification
-        fields = [
-            'id',
-            'job',
-            'recipient',
-            'notification_type',
-            'title',
-            'message',
-            'is_read',
-            'read_at',
-            'action_url',
-            'created_at'
-        ]
-        read_only_fields = ['id', 'recipient', 'created_at']
+# JobNotificationSerializer REMOVED - consolidated with generic notifications system
+#
+# Use notifications.serializers.NotificationSerializer instead
+# Migration date: November 14, 2025
 
 
 class JobActionSerializer(serializers.ModelSerializer):

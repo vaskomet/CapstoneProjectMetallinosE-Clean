@@ -143,9 +143,9 @@ class ReviewSerializer(serializers.ModelSerializer):
         
         user = request.user
         
-        # Check if job is completed
-        if value.status != 'completed':
-            raise serializers.ValidationError("Only completed jobs can be reviewed.")
+        # Check if job is awaiting_review or completed
+        if value.status not in ['awaiting_review', 'completed']:
+            raise serializers.ValidationError("Only jobs that are awaiting review or completed can be reviewed.")
         
         # Check if user is a participant in the job
         if user != value.client and user != value.cleaner:
@@ -182,6 +182,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         """
         Create review with nested ratings.
         Automatically set reviewee based on reviewer's role.
+        Job status transition to 'completed' handled in Review model's save() method.
         """
         ratings_data = validated_data.pop('ratings')
         request = self.context.get('request')

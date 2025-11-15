@@ -6,12 +6,16 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import listPlugin from '@fullcalendar/list';
 import { useUser } from '../contexts/UserContext';
 import { cleaningJobsAPI, propertiesAPI, jobBidsAPI } from '../services/api';
+import { jobWorkflowAPI, jobPhotosAPI } from '../services/jobLifecycleAPI';
+import { getStatusColor } from '../config/jobStatusConfig';
 import LocationFilter from './LocationFilter';
 import JobWorkflowModal from './JobWorkflowModal';
 import PaymentModal from './payments/PaymentModal';
 import EmailVerificationBanner from './EmailVerificationBanner';
 import ServiceAreaBanner from './ServiceAreaBanner';
 import JobCard from './jobs/JobCard';
+import JobProgressBar from './jobs/JobProgressBar';
+import JobStatusCard from './jobs/JobStatusCard';
 import JobListItem from './jobs/JobListItem';
 import SearchFilterBar from './jobs/SearchFilterBar';
 import EmptyState from './jobs/EmptyState';
@@ -164,6 +168,14 @@ const CleaningJobsPool = () => {
   const [paymentJobData, setPaymentJobData] = useState(null); // Job data for payment (job ID, amount, title)
   const [pendingBidId, setPendingBidId] = useState(null); // Bid ID pending payment confirmation
 
+  // Rejection modal states (for client job completion review)
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  // Job photos state
+  const [jobPhotos, setJobPhotos] = useState([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+
   // View mode state (Phase 4: UX improvements)
   const [viewMode, setViewMode] = useState('calendar'); // 'calendar', 'card', 'list'
   const [searchTerm, setSearchTerm] = useState(''); // Search query
@@ -295,18 +307,199 @@ const CleaningJobsPool = () => {
     }
   }, [searchTerm, priceRange.min, priceRange.max, dateRange.from, dateRange.to, statusFilter, locationFilter]);
 
-  // Handle pre-selected job from navigation state (e.g., from cleaner profile)
+  // Handle job ID from URL query parameter (e.g., ?job=123 or ?ref=encoded from DM links)
   useEffect(() => {
-    if (location.state?.selectedJobId && jobs.length > 0) {
-      const jobToSelect = jobs.find(job => job.id === location.state.selectedJobId);
-      if (jobToSelect) {
-        setSelectedJob(jobToSelect);
-        setShowJobModal(true);
-        // Clear the navigation state so it doesn't re-trigger
-        navigate(location.pathname, { replace: true, state: {} });
+    const handleJobFromQueryParam = async () => {
+      let jobId = null;
+      
+      // Check for encoded ref parameter first
+      const refParam = searchParams.get('ref');
+      if (refParam) {
+        try {
+          // Decode base64 encoded job ID
+          const decoded = atob(refParam.replace(/-/g, '+').replace(/_/g, '/'));
+          jobId = parseInt(decoded, 10);
+          console.log('🔗 Decoded job ID from ref parameter:', jobId);
+        } catch (error) {
+          console.error('❌ Failed to decode ref parameter:', error);
+          toast.error('Invalid job reference');
+          searchParams.delete('ref');
+          setSearchParams(searchParams, { replace: true });
+          return;
+        }
+      } else {
+        // Fallback to plain job parameter
+        const jobIdParam = searchParams.get('job');
+        if (!jobIdParam) return;
+        jobId = parseInt(jobIdParam, 10);
+        console.log('🔗 Opening job from query parameter:', jobId);
       }
+
+      if (!jobId) return;
+
+      try {
+        // Fetch fresh job data directly from API
+        const freshJob = await cleaningJobsAPI.getById(jobId);
+        setSelectedJob(freshJob);
+        setShowJobModal(true);
+        
+        // Clear query parameters
+        searchParams.delete('job');
+        searchParams.delete('ref');
+        setSearchParams(searchParams, { replace: true });
+        
+        console.log('✅ Job modal opened from query parameter');
+      } catch (error) {
+        console.error('❌ Failed to fetch job from query parameter:', error);
+        toast.error('Failed to load job details. Please try again.');
+        searchParams.delete('job');
+        searchParams.delete('ref');
+        setSearchParams(searchParams, { replace: true });
+      }
+    };
+
+    handleJobFromQueryParam();
+  }, [searchParams.get('job'), searchParams.get('ref')]);
+
+  // Handle pre-selected job from navigation state (e.g., from notification or cleaner profile)
+  useEffect(() => {
+    const handleJobFromNavigation = async () => {
+      if (!location.state?.selectedJobId) {
+        console.log('📭 No selectedJobId in navigation state');
+        return;
+      }
+
+      const jobId = location.state.selectedJobId;
+      const fromNotification = location.state.fromNotification;
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📬 NAVIGATION: Opening job ${jobId}`);
+      console.log(`   Source: ${fromNotification ? '🔔 NOTIFICATION' : '🔗 Navigation'}`);
+      console.log(`   Current jobs in state: ${jobs.length}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // If from notification, fetch fresh job data directly from API
+      if (fromNotification) {
+        try {
+          console.log('🔄 Fetching fresh job data from API...');
+          console.time('Job API fetch');
+          
+          const freshJob = await cleaningJobsAPI.getById(jobId);
+          
+          console.timeEnd('Job API fetch');
+          console.log('✅ Fresh job data loaded:', {
+            id: freshJob.id,
+            status: freshJob.status,
+            title: freshJob.services_description?.substring(0, 50),
+            hasPhotos: freshJob.photos?.length || 0
+          });
+          
+          setSelectedJob(freshJob);
+          setShowJobModal(true);
+          
+          console.log('✅ Modal opened with fresh data');
+          
+          // Clear the navigation state so it doesn't re-trigger
+          navigate(location.pathname, { replace: true, state: {} });
+        } catch (error) {
+          console.error('❌ Failed to fetch job from notification:', error);
+          console.error('   Error details:', error.response?.data || error.message);
+          toast.error('Failed to load job details. Please try again.');
+          navigate(location.pathname, { replace: true, state: {} });
+        }
+      } else {
+        // From other navigation (cleaner profile), use existing jobs array
+        console.log('🔗 Using existing jobs array (non-notification)');
+        if (jobs.length > 0) {
+          const jobToSelect = jobs.find(job => job.id === jobId);
+          if (jobToSelect) {
+            console.log('✅ Found job in existing array:', jobToSelect.id);
+            setSelectedJob(jobToSelect);
+            setShowJobModal(true);
+            navigate(location.pathname, { replace: true, state: {} });
+          } else {
+            console.warn('⚠️ Job not found in existing array, will wait for jobs to load');
+          }
+        } else {
+          console.log('⏳ Waiting for jobs to load...');
+        }
+      }
+    };
+
+    handleJobFromNavigation();
+  }, [location.state?.selectedJobId, location.state?.fromNotification, jobs.length]);
+
+  // Fetch photos when a job is selected and modal opens
+  useEffect(() => {
+    if (selectedJob && showJobModal) {
+      fetchJobPhotos(selectedJob.id);
+    } else {
+      setJobPhotos([]);
     }
-  }, [location.state, jobs, navigate, location.pathname]);
+  }, [selectedJob?.id, showJobModal]);
+
+  // Listen for job notification events and auto-refresh affected jobs
+  useEffect(() => {
+    const handleJobNotification = async (event) => {
+      const { jobId, notificationType, notification } = event.detail;
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔔 JOB NOTIFICATION RECEIVED');
+      console.log('   Job ID:', jobId);
+      console.log('   Type:', notificationType);
+      console.log('   Title:', notification.title);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      try {
+        // Fetch fresh job data from API
+        console.log('🔄 Fetching fresh job data...');
+        console.time('Job refresh');
+        const freshJob = await cleaningJobsAPI.getById(jobId);
+        console.timeEnd('Job refresh');
+        console.log('✅ Fresh job data loaded:', {
+          id: freshJob.id,
+          status: freshJob.status,
+          title: freshJob.services_description?.substring(0, 50)
+        });
+        
+        // Update jobs array
+        setJobs(prevJobs => {
+          const jobIndex = prevJobs.findIndex(job => job.id === jobId);
+          if (jobIndex !== -1) {
+            console.log('📝 Updating job in jobs array at index', jobIndex);
+            const updated = [...prevJobs];
+            updated[jobIndex] = freshJob;
+            return updated;
+          } else {
+            console.log('➕ Job not in array, adding it');
+            return [freshJob, ...prevJobs];
+          }
+        });
+        
+        // If modal is open for this job, update selectedJob and refresh photos
+        if (selectedJob?.id === jobId && showJobModal) {
+          console.log('🔄 Updating opened job modal with fresh data');
+          setSelectedJob(freshJob);
+          fetchJobPhotos(jobId);
+          toast.info('Job details updated', { autoClose: 2000 });
+        }
+        
+        console.log('✅ Job auto-refresh complete');
+      } catch (error) {
+        console.error('❌ Failed to auto-refresh job:', error);
+      }
+    };
+    
+    // Subscribe to job notification events
+    console.log('👂 Subscribing to jobNotificationReceived events');
+    window.addEventListener('jobNotificationReceived', handleJobNotification);
+    
+    // Cleanup on unmount
+    return () => {
+      console.log('🔇 Unsubscribing from jobNotificationReceived events');
+      window.removeEventListener('jobNotificationReceived', handleJobNotification);
+    };
+  }, [selectedJob?.id, showJobModal]); // Include dependencies for the conditional logic
 
   // Handle URL parameters for highlighting/opening specific jobs
   useEffect(() => {
@@ -495,6 +688,8 @@ const CleaningJobsPool = () => {
     // Update selectedJob if it's the same job
     if (selectedJob && selectedJob.id === updatedJob.id) {
       setSelectedJob(updatedJob);
+      // Refresh photos after job update (e.g., after uploading photos)
+      fetchJobPhotos(updatedJob.id);
     }
 
     // Close workflow modal
@@ -508,6 +703,87 @@ const CleaningJobsPool = () => {
   const closeWorkflowModal = () => {
     setShowWorkflowModal(false);
     setWorkflowAction(null);
+  };
+
+  /**
+   * Fetch photos for the selected job
+   */
+  const fetchJobPhotos = async (jobId) => {
+    if (!jobId) return;
+    
+    setPhotosLoading(true);
+    try {
+      const photos = await jobPhotosAPI.getAll(jobId);
+      setJobPhotos(photos);
+    } catch (error) {
+      console.error('Failed to fetch job photos:', error);
+      setJobPhotos([]);
+    } finally {
+      setPhotosLoading(false);
+    }
+  };
+
+  /**
+   * Accept job completion (client only)
+   * Transitions job from 'awaiting_review' to 'completed'
+   */
+  const handleAcceptCompletion = async () => {
+    if (!selectedJob || selectedJob.status !== 'awaiting_review') {
+      toast.error('Job must be awaiting review to accept completion');
+      return;
+    }
+
+    try {
+      await jobWorkflowAPI.acceptCompletion(selectedJob.id, 'Client verified and accepted the completed work.');
+      toast.success('Job completion accepted! You can now leave a review.');
+      
+      // Refresh the job
+      const updatedJob = await cleaningJobsAPI.getById(selectedJob.id);
+      setSelectedJob(updatedJob);
+      
+      // Update jobs list
+      setJobs(prevJobs =>
+        prevJobs.map(job => job.id === selectedJob.id ? updatedJob : job)
+      );
+    } catch (error) {
+      toast.error(error.message || 'Failed to accept job completion');
+    }
+  };
+
+  /**
+   * Reject job completion (client only)
+   * Opens modal for rejection reason, then transitions job back to 'in_progress'
+   */
+  const handleRejectCompletion = async () => {
+    if (!selectedJob || selectedJob.status !== 'awaiting_review') {
+      toast.error('Job must be awaiting review to reject completion');
+      return;
+    }
+
+    if (!rejectionReason || rejectionReason.trim().length < 10) {
+      toast.error('Please provide a detailed reason for rejecting the work (at least 10 characters)');
+      return;
+    }
+
+    try {
+      await jobWorkflowAPI.rejectCompletion(selectedJob.id, rejectionReason);
+      toast.success('Work rejected. The cleaner has been notified to make corrections.');
+      
+      // Close modal and reset state
+      setShowRejectModal(false);
+      setRejectionReason('');
+      
+      // Refresh the job
+      const updatedJob = await cleaningJobsAPI.getById(selectedJob.id);
+      setSelectedJob(updatedJob);
+      
+      // Update jobs list
+      setJobs(prevJobs =>
+        prevJobs.map(job => job.id === selectedJob.id ? updatedJob : job)
+      );
+    } catch (error) {
+      toast.error(error.message || 'Failed to reject job completion');
+    }
   };
 
   /**
@@ -718,24 +994,7 @@ const CleaningJobsPool = () => {
     };
   });
 
-  /**
-   * Returns color code based on job status for calendar visualization
-   * @param {string} status - Job status
-   * @returns {string} Hex color code
-   */
-  function getStatusColor(status) {
-    switch (status) {
-      case 'open_for_bids': return '#f59e0b'; // amber - available for bidding
-      case 'bid_accepted': return '#06b6d4'; // cyan - bid accepted, awaiting confirmation
-      case 'confirmed': return '#3b82f6'; // blue - confirmed by cleaner
-      case 'ready_to_start': return '#6366f1'; // indigo - ready to begin work
-      case 'in_progress': return '#8b5cf6'; // purple - job actively being worked on
-      case 'awaiting_review': return '#14b8a6'; // teal - waiting for client review
-      case 'completed': return '#10b981'; // green - job finished successfully
-      case 'cancelled': return '#ef4444'; // red - job cancelled
-      default: return '#6b7280'; // gray - unknown status
-    }
-  }
+  // getStatusColor now imported from jobStatusConfig.js
 
   if (!isAuthenticated) {
     return null; // Will redirect to login
@@ -1083,10 +1342,10 @@ const CleaningJobsPool = () => {
         )}
       </div>
 
-      {/* Job Creation Modal */}
+      {/* Job Creation Modal - Layer 2 (z-60) - opens independently */}
       {showCreateModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]"
           onClick={() => setShowCreateModal(false)}
         >
           <div 
@@ -1289,14 +1548,16 @@ const CleaningJobsPool = () => {
         </div>
       )}
 
-      {/* Job Details Modal */}
+      {/* Job Details Modal - Layer 1 (z-50) - base modal layer */}
       {showJobModal && selectedJob && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
           onClick={() => setShowJobModal(false)}
         >
           <div 
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto"
+            className={`bg-white rounded-lg shadow-xl w-full max-h-[90vh] overflow-y-auto ${
+              jobPhotos.length > 0 ? 'max-w-5xl' : 'max-w-2xl'
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6">
@@ -1385,6 +1646,51 @@ const CleaningJobsPool = () => {
                   </div>
                 )}
                 
+                {/* Progress Indicator - Visual workflow progress */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <JobProgressBar 
+                    currentStatus={selectedJob.status}
+                    size="md"
+                    showLabels={true}
+                  />
+                </div>
+
+                {/* Status Card - Contextual information about current stage */}
+                <JobStatusCard 
+                  job={selectedJob}
+                  userRole={user?.role}
+                />
+                
+                {/* Rejection Reason - Shown to cleaner when work needs revision */}
+                {selectedJob.rejection_reason && user?.role === 'cleaner' && selectedJob.status === 'in_progress' && (
+                  <div className="bg-orange-50 border-2 border-orange-300 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-shrink-0 text-2xl">⚠️</div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-orange-900 mb-2">
+                          Work Needs Revision
+                        </h4>
+                        <p className="text-sm text-orange-800 mb-2">
+                          The client has requested additional work on this job:
+                        </p>
+                        <div className="bg-white rounded p-3 border border-orange-200">
+                          <p className="text-gray-800 italic">"{selectedJob.rejection_reason.reason}"</p>
+                        </div>
+                        <div className="text-xs text-orange-700 mt-2">
+                          Rejected by {selectedJob.rejection_reason.rejected_by} on{' '}
+                          {new Date(selectedJob.rejection_reason.rejected_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div>
                   <span className="font-medium text-gray-700">Date:</span>
                   <span className="ml-2">{selectedJob.scheduled_date}</span>
@@ -1396,7 +1702,7 @@ const CleaningJobsPool = () => {
                     <span className="ml-2">{selectedJob.start_time}</span>
                   </div>
                 )}
-                
+
                 {/* Show timing information for cleaners */}
                 {user?.role === 'cleaner' && selectedJob.status === 'confirmed' && selectedJob.cleaner?.id === user.id && selectedJob.scheduled_date && selectedJob.start_time && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -1603,12 +1909,104 @@ const CleaningJobsPool = () => {
                   </div>
                 )}
 
+                {/* Job Photos Documentation */}
+                {(selectedJob.status === 'in_progress' || selectedJob.status === 'awaiting_review' || selectedJob.status === 'completed') && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Job Documentation Photos</h3>
+                    
+                    {photosLoading ? (
+                      <div className="animate-pulse space-y-4">
+                        <div className="h-4 bg-gray-300 rounded w-1/4"></div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="h-32 bg-gray-300 rounded"></div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : jobPhotos.length === 0 ? (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg">
+                        <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-gray-500">No photos uploaded yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {/* Group photos by type */}
+                        {['before', 'after', 'progress'].map(photoType => {
+                          const photosOfType = jobPhotos.filter(p => p.photo_type === photoType);
+                          if (photosOfType.length === 0) return null;
+                          
+                          return (
+                            <div key={photoType} className="space-y-3">
+                              <h4 className="text-md font-medium text-gray-800 flex items-center gap-2">
+                                {photoType === 'before' && (
+                                  <>
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">Before</span>
+                                    <span className="text-sm text-gray-600">({photosOfType.length} photos)</span>
+                                  </>
+                                )}
+                                {photoType === 'after' && (
+                                  <>
+                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-sm">After</span>
+                                    <span className="text-sm text-gray-600">({photosOfType.length} photos)</span>
+                                  </>
+                                )}
+                                {photoType === 'progress' && (
+                                  <>
+                                    <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-sm">Progress</span>
+                                    <span className="text-sm text-gray-600">({photosOfType.length} photos)</span>
+                                  </>
+                                )}
+                              </h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                {photosOfType.map((photo) => (
+                                  <div key={photo.id} className="group relative">
+                                    <img
+                                      src={photo.image}
+                                      alt={photo.description || `${photoType} photo`}
+                                      className="w-full h-40 object-cover rounded-lg border-2 border-gray-200 group-hover:border-blue-400 transition-all shadow-sm hover:shadow-md cursor-pointer"
+                                      onClick={() => window.open(photo.image, '_blank')}
+                                    />
+                                    {photo.description && (
+                                      <div className="absolute inset-0 bg-black bg-opacity-75 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center p-3">
+                                        <p className="text-white text-xs text-center">{photo.description}</p>
+                                      </div>
+                                    )}
+                                    <div className="absolute top-2 right-2 bg-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                                      </svg>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Workflow Action Buttons for Cleaners */}
                 {user?.role === 'cleaner' && selectedJob.status !== 'completed' && selectedJob.status !== 'open_for_bids' && selectedJob.cleaner?.id === user.id && (
                   <div className="space-y-2">
                     <h3 className="font-medium text-gray-700">Job Actions:</h3>
                     <div className="flex gap-2">
-                      {(selectedJob.status === 'confirmed' || selectedJob.status === 'bid_accepted') && (
+                      {/* Confirm Bid Button - Only for bid_accepted status */}
+                      {selectedJob.status === 'bid_accepted' && (
+                        <button
+                          onClick={() => handleWorkflowAction('confirm')}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm transition-colors"
+                          title="Confirm that you accept this job"
+                        >
+                          Confirm Bid
+                        </button>
+                      )}
+                      
+                      {/* Start Job Button - Only for confirmed status */}
+                      {selectedJob.status === 'confirmed' && (
                         (() => {
                           const canStartNow = selectedJob.scheduled_date && selectedJob.start_time ? (() => {
                             const scheduledDateTime = new Date(`${selectedJob.scheduled_date}T${selectedJob.start_time}`);
@@ -1624,7 +2022,7 @@ const CleaningJobsPool = () => {
                               disabled={!canStartNow}
                               className={`px-4 py-2 rounded text-sm transition-colors ${
                                 canStartNow 
-                                  ? 'bg-blue-500 hover:bg-blue-600 text-white cursor-pointer'
+                                  ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer'
                                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                               }`}
                               title={!canStartNow ? 'Job can only be started within the allowed time window' : 'Start the job with before photos'}
@@ -1634,15 +2032,99 @@ const CleaningJobsPool = () => {
                           );
                         })()
                       )}
-                      {selectedJob.status === 'in_progress' && (
-                        <button
-                          onClick={() => handleWorkflowAction('finish')}
-                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded text-sm transition-colors"
-                        >
-                          Complete Job
-                        </button>
+                      
+                      {/* Complete Job Button - Only for in_progress status */}
+                      {(selectedJob.status === 'in_progress' || selectedJob.status === 'awaiting_review' || selectedJob.status === 'completed') && (
+                        (() => {
+                          const canComplete = selectedJob.status === 'in_progress';
+                          const statusMessage = 
+                            selectedJob.status === 'awaiting_review' ? 'Job is awaiting client review' :
+                            selectedJob.status === 'completed' ? 'Job has been completed' :
+                            '';
+                          
+                          return (
+                            <button
+                              onClick={() => canComplete && handleWorkflowAction('finish')}
+                              disabled={!canComplete}
+                              className={`px-4 py-2 rounded text-sm transition-colors ${
+                                canComplete
+                                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                              title={!canComplete ? statusMessage : 'Complete the job with after photos'}
+                            >
+                              Complete Job
+                              {!canComplete && (
+                                <span className="block text-xs mt-1 font-normal">
+                                  {statusMessage}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })()
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* Accept/Reject Completion Buttons for Clients */}
+                {user?.role === 'client' && selectedJob.status === 'awaiting_review' && selectedJob.client?.id === user.id && (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg p-5 mt-4">
+                    <h3 className="text-xl font-bold text-gray-900 mb-3 flex items-center">
+                      <svg className="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Review & Accept Completed Work
+                    </h3>
+                    <div className="bg-white rounded-lg p-4 mb-4 border border-blue-200">
+                      <div className="flex items-start gap-3 mb-3">
+                        <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-gray-800 mb-2">Photo Documentation Summary:</p>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">Before</span>
+                              <strong>{jobPhotos.filter(p => p.photo_type === 'before').length}</strong> photos
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">After</span>
+                              <strong>{jobPhotos.filter(p => p.photo_type === 'after').length}</strong> photos
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700 mb-4 bg-yellow-50 border border-yellow-200 rounded p-3">
+                        ⚠️ <strong>Important:</strong> Please scroll up and carefully review the before and after photos above before making your decision.
+                      </p>
+                    </div>
+                    <p className="text-gray-700 text-sm mb-4 font-medium">
+                      The cleaner has marked this job as complete. Review the documentation and choose an action:
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        onClick={handleAcceptCompletion}
+                        className="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Accept Work
+                      </button>
+                      <button
+                        onClick={() => setShowRejectModal(true)}
+                        className="px-6 py-3 bg-gradient-to-r from-red-600 to-rose-600 text-white font-semibold rounded-lg hover:from-red-700 hover:to-rose-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Request Fixes
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-3 text-center italic">
+                      You can leave an optional review after accepting completion
+                    </p>
                   </div>
                 )}
               </div>
@@ -1651,10 +2133,10 @@ const CleaningJobsPool = () => {
         </div>
       )}
 
-      {/* Bid Submission Modal */}
+      {/* Bid Submission Modal - Layer 2 (z-60) - opens from job details */}
       {showBidModal && selectedJob && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]"
           onClick={() => setShowBidModal(false)}
         >
           <div 
@@ -1753,6 +2235,70 @@ const CleaningJobsPool = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Modal - Layer 2 (z-60) - opens from job details */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Request Additional Work
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectionReason('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="px-6 py-4">
+              <p className="text-sm text-gray-600 mb-4">
+                Please explain what needs to be fixed or improved. The cleaner will be notified and can return to complete the work properly.
+              </p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for rejection <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 min-h-[120px]"
+                placeholder="Please describe what needs to be fixed (minimum 10 characters)..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {rejectionReason.length} / 10 characters minimum
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end space-x-3 rounded-b-lg">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectionReason('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectCompletion}
+                disabled={rejectionReason.trim().length < 10}
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-lg hover:from-red-700 hover:to-rose-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
+              >
+                Send to Cleaner
+              </button>
             </div>
           </div>
         </div>

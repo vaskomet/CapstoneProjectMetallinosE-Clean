@@ -298,6 +298,18 @@ export const WebSocketProvider = ({ children }) => {
           const toastType = getNotificationToastType(notification.priority);
           window.globalToast[toastType](toastMessage, 6000);
         }
+        
+        // Dispatch custom event for job-related notifications so components can auto-refresh
+        if (data.notification.job) {
+          console.log('📡 Dispatching jobNotificationReceived event for job:', data.notification.job);
+          window.dispatchEvent(new CustomEvent('jobNotificationReceived', {
+            detail: {
+              jobId: data.notification.job,
+              notificationType: data.notification.notification_type,
+              notification: data.notification
+            }
+          }));
+        }
         break;
 
       case 'notification_read':

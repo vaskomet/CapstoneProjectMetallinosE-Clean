@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import JobPhoto, JobLifecycleEvent, JobNotification, JobAction
+from .models import JobPhoto, JobLifecycleEvent, JobAction
 
 @admin.register(JobPhoto)
 class JobPhotoAdmin(admin.ModelAdmin):
@@ -21,15 +21,9 @@ class JobLifecycleEventAdmin(admin.ModelAdmin):
     search_fields = ('job__id', 'triggered_by__username', 'description')
     date_hierarchy = 'timestamp'
 
-@admin.register(JobNotification)
-class JobNotificationAdmin(admin.ModelAdmin):
-    """
-    JobNotification admin interface.
-    """
-    list_display = ('job', 'recipient', 'notification_type', 'title', 'is_read', 'created_at')
-    list_filter = ('notification_type', 'is_read', 'created_at')
-    search_fields = ('job__id', 'recipient__username', 'title', 'message')
-    date_hierarchy = 'created_at'
+# JobNotificationAdmin REMOVED - consolidated with generic notifications system
+# Use notifications.admin.NotificationAdmin instead
+# Migration date: November 14, 2025
 
 @admin.register(JobAction)
 class JobActionAdmin(admin.ModelAdmin):

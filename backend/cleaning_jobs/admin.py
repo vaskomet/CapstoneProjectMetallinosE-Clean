@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import CleaningJob, JobBid, JobPhoto
+from .models import CleaningJob, JobBid
+
+# JobPhoto admin removed - now managed in job_lifecycle app
 
 @admin.register(CleaningJob)
 class CleaningJobAdmin(admin.ModelAdmin):
@@ -20,12 +22,3 @@ class JobBidAdmin(admin.ModelAdmin):
     list_filter = ('status', 'created_at')
     search_fields = ('job__id', 'cleaner__email')
     date_hierarchy = 'created_at'
-
-@admin.register(JobPhoto)
-class JobPhotoAdmin(admin.ModelAdmin):
-    """
-    JobPhoto admin interface.
-    """
-    list_display = ('job', 'photo_type', 'description', 'uploaded_at')
-    list_filter = ('photo_type', 'uploaded_at')
-    search_fields = ('job__id', 'description')

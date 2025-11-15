@@ -1,5 +1,7 @@
 import React from 'react';
 import HighlightedText from './HighlightedText';
+import { getStatusTailwind, getStatusLabel } from '../../config/jobStatusConfig';
+import { getDotColor, getStatusConfig } from '../../constants/statusColors';
 
 /**
  * JobListItem Component - Compact list view for cleaning job with search highlighting
@@ -16,23 +18,6 @@ import HighlightedText from './HighlightedText';
  * @param {String} userRole - Current user's role (client/cleaner)
  */
 const JobListItem = ({ job, onViewDetails, onBid, userRole }) => {
-  // Status color mapping
-  const statusColors = {
-    open_for_bids: 'bg-green-500',
-    bid_accepted: 'bg-blue-500',
-    confirmed: 'bg-purple-500',
-    in_progress: 'bg-yellow-500',
-    completed: 'bg-gray-500',
-    cancelled: 'bg-red-500',
-  };
-
-  // Format status for display
-  const formatStatus = (status) => {
-    return status.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
-  };
-
   // Get property address
   const address = job.property?.city || job.property?.address || 'No location';
 
@@ -40,6 +25,9 @@ const JobListItem = ({ job, onViewDetails, onBid, userRole }) => {
   const canBid = userRole === 'cleaner' && 
                  job.status === 'open_for_bids' && 
                  job.client?.id !== job.id;
+
+  // Get status config for unified styling
+  const statusConfig = getStatusConfig(job.status);
 
   return (
     <div 
@@ -51,8 +39,8 @@ const JobListItem = ({ job, onViewDetails, onBid, userRole }) => {
         <div className="flex items-center flex-1 min-w-0">
           {/* Status Indicator */}
           <div className="flex-shrink-0 mr-4">
-            <div className={`w-3 h-3 rounded-full ${statusColors[job.status] || 'bg-gray-400'}`} 
-                 title={formatStatus(job.status)}></div>
+            <div className={`w-3 h-3 rounded-full ${getDotColor(job.status)}`} 
+                 title={statusConfig.label}></div>
           </div>
 
           {/* Job Details */}
